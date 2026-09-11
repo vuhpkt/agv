@@ -158,7 +158,7 @@ void App_Comms_Process(void) {
 }
 
 void App_Comms_SendLog(const char *fmt, ...) {
-    char text_buf[64];
+    char text_buf[AGV_PROTOCOL_MAX_PAYLOAD];
     va_list args;
     va_start(args, fmt);
     vsnprintf(text_buf, sizeof(text_buf), fmt, args);

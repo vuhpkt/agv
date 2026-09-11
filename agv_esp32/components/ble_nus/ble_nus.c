@@ -314,7 +314,7 @@ int ble_nus_send(const uint8_t *data, size_t len) {
         print_len--;
     }
     if (print_len > 0) {
-        ESP_LOGI(TAG, "[BLE TX] (%u bytes) %.*s", (unsigned)len, print_len, data);
+        ESP_LOGD(TAG, "[BLE TX] (%u bytes) %.*s", (unsigned)len, print_len, data);
     }
 
     struct os_mbuf *om = ble_hs_mbuf_from_flat(data, len);

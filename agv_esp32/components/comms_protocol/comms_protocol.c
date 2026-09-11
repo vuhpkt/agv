@@ -197,7 +197,7 @@ size_t agv_pack_mission_status(uint8_t state, uint8_t current_step, uint8_t *out
 
 size_t agv_pack_log(const char *text, uint8_t *out_buf, size_t max_len) {
     size_t str_len = (text != NULL) ? strlen(text) : 0;
-    if (str_len > 64) str_len = 64;
+    if (str_len > AGV_PROTOCOL_MAX_PAYLOAD) str_len = AGV_PROTOCOL_MAX_PAYLOAD;
     return agv_pack_frame(AGV_MSG_LOG, text, (uint8_t)str_len, out_buf, max_len);
 }
 

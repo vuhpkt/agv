@@ -237,11 +237,11 @@ def translate_cli_command(user_input):
         return f"PI_TUNE {args}".strip()
     elif cmd in ("LINE_TEST",):
         return f"LINE_TEST {args}".strip()
-    elif cmd in ("ROUTE_LOAD",):
+    elif cmd in ("ROUTE_LOAD", "LOAD"):
         return f"ROUTE_LOAD {args}".strip()
-    elif cmd in ("ROUTE_START",):
+    elif cmd in ("ROUTE_START", "START"):
         return "ROUTE_START"
-    elif cmd in ("ROUTE_CANCEL",):
+    elif cmd in ("ROUTE_CANCEL", "CANCEL"):
         return "ROUTE_CANCEL"
     elif cmd in ("ROUTE_TEST",):
         return "ROUTE_TEST"
@@ -389,8 +389,12 @@ async def run_ir_monitor_workflow(client: AGVBleClient, duration_ms: int = 15000
             print("  Press Ctrl+C or send 'STOP' to exit.")
             sys.stdout.flush()
 
-    except asyncio.CancelledError:
-        pass
+    except (asyncio.CancelledError, KeyboardInterrupt):
+        print("\n[!] IR Monitor interrupted by user.")
+        try:
+            await client.send_command("LINE_TEST 3 0 0")
+        except Exception:
+            pass
     finally:
         client.remove_line_listener(on_line)
         print("\n[+] IR Monitor finished.")
@@ -449,8 +453,12 @@ async def run_calibration_workflow(
             except asyncio.TimeoutError:
                 continue
 
-    except asyncio.CancelledError:
-        pass
+    except (asyncio.CancelledError, KeyboardInterrupt):
+        print("\n[!] Calibration interrupted by user.")
+        try:
+            await client.send_command("LINE_TEST 3 0 0")
+        except Exception:
+            pass
     finally:
         client.remove_line_listener(on_line)
 
@@ -547,8 +555,12 @@ async def run_step_test_workflow(
             except asyncio.TimeoutError:
                 continue
 
-    except asyncio.CancelledError:
-        pass
+    except (asyncio.CancelledError, KeyboardInterrupt):
+        print("\n[!] Step test interrupted! Sending emergency STOP...")
+        try:
+            await client.send_command("STOP")
+        except Exception:
+            pass
     finally:
         client.remove_line_listener(on_line)
 
@@ -567,7 +579,7 @@ async def run_step_test_workflow(
 
     # Compute key metrics
     rpms = [s["rpm"] for s in step_samples]
-    peak_rpm = max(rpms) if rpms else 0.0
+    peak_rpm = max(rpms, key=abs) if rpms else 0.0
     # Steady state: average of last 25% of samples
     tail_len = max(1, len(rpms) // 4)
     ss_rpm = sum(rpms[-tail_len:]) / tail_len
@@ -672,16 +684,28 @@ async def run_repl(client: AGVBleClient):
 
             if c0 in ("monitor_ir", "monitor"):
                 dur = int(tokens[1]) if len(tokens) > 1 and tokens[1].isdigit() else 15000
-                await run_ir_monitor_workflow(client, duration_ms=dur)
+                client.remove_line_listener(print_log)
+                try:
+                    await run_ir_monitor_workflow(client, duration_ms=dur)
+                finally:
+                    client.add_line_listener(print_log)
             elif c0 in ("calibrate", "calib", "line_calib"):
                 dur = int(tokens[1]) if len(tokens) > 1 and tokens[1].isdigit() else 10000
-                await run_calibration_workflow(client, duration_ms=dur)
+                client.remove_line_listener(print_log)
+                try:
+                    await run_calibration_workflow(client, duration_ms=dur)
+                finally:
+                    client.add_line_listener(print_log)
             elif c0 in ("step", "step_test"):
                 motor = tokens[1].upper() if len(tokens) > 1 else "L"
                 pwm = int(tokens[2]) if len(tokens) > 2 else 600
                 dur = int(tokens[3]) if len(tokens) > 3 else 1500
                 plot = "--plot" in tokens or "-p" in tokens
-                await run_step_test_workflow(client, motor=motor, pwm=pwm, duration_ms=dur, plot=plot)
+                client.remove_line_listener(print_log)
+                try:
+                    await run_step_test_workflow(client, motor=motor, pwm=pwm, duration_ms=dur, plot=plot)
+                finally:
+                    client.add_line_listener(print_log)
             else:
                 translated = translate_cli_command(cmd_raw)
                 await client.send_command(translated)

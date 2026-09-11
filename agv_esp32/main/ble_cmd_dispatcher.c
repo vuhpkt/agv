@@ -195,7 +195,6 @@ void ble_cmd_dispatcher_handle_text(const uint8_t *data, size_t len, void *user_
         p.actions[2] = AGV_ACTION_FORWARD;
         p.actions[3] = AGV_ACTION_STOP;
         uart_service_send_msg(AGV_MSG_ROUTE_LOAD, &p, sizeof(p));
-        vTaskDelay(pdMS_TO_TICKS(10));
         uart_service_send_msg(AGV_MSG_ROUTE_START, NULL, 0);
         ble_nus_send_str("[RESP] ROUTE TEST STARTED (F,R,F,S @ 60 RPM)\r\n");
     } else if (strcasecmp(cmd, "HELP") == 0) {
@@ -259,18 +258,19 @@ void ble_cmd_dispatcher_handle_frame(const agv_frame_t *frame, void *user_data) 
             memcpy(log_text, frame->payload, len);
             log_text[len] = '\0';
 
+            /* Trim trailing whitespace and CRLF */
+            int l = (int)strlen(log_text);
+            while (l > 0 && (log_text[l-1] == '\r' || log_text[l-1] == '\n')) {
+                log_text[--l] = '\0';
+            }
+
             /* If telemetry prefix DATA: pass through directly */
             if (strncmp(log_text, "DATA:", 5) == 0) {
-                int l = (int)strlen(log_text);
-                while (l > 0 && (log_text[l-1] == '\r' || log_text[l-1] == '\n')) {
-                    log_text[--l] = '\0';
-                }
                 snprintf(resp, sizeof(resp), "%s\r\n", log_text);
-                ble_nus_send_str(resp);
             } else {
                 snprintf(resp, sizeof(resp), "[STM32 LOG] %s\r\n", log_text);
-                ble_nus_send_str(resp);
             }
+            ble_nus_send_str(resp);
             break;
         }
 
