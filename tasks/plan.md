@@ -1,98 +1,88 @@
-# Implementation Plan: Giao Tiếp UART Nhị Phân STM32 - ESP32 & Gỡ Bỏ SEGGER RTT
+# Implementation Plan: AGV ESP32 Binary Gateway & Wireless BLE Diagnostics
 
-## 1. Tổng Quan & Bối Cảnh
-Dự án AGV chuyển từ giai đoạn kiểm thử bàn cắm dây nạp (ST-Link / SEGGER RTT) sang vận hành thực địa không dây trên sa bàn.
-ESP32 đóng vai trò là BLE Gateway tiếp nhận lệnh lộ trình từ người dùng, chạy FSM điều phối cấp cao và truyền chuỗi hành động (`[THẲNG, RẼ_PHẢI, ...]`) xuống STM32 qua UART1.
-STM32 đóng vai trò vi điều khiển thời gian thực phụ trách bám line, tự đếm vạch ngang IR để nhảy bước lộ trình tự hành, thực hiện các bài test/chẩn đoán phần cứng và gửi log/trạng thái sang ESP32 dưới dạng các gói tin nhị phân (Binary Frame).
-Thư viện SEGGER RTT được gỡ bỏ hoàn toàn khỏi firmware STM32.
-
----
-
-## 2. Quyết Định Kiến Trúc (Architecture Decisions)
-
-### 2.1 Cấu Trúc Khung Truyền Nhị Phân (Binary Frame)
-Khung truyền nhị phân chuẩn MCU-to-MCU gọn nhẹ, chống tràn bộ đệm và chống nhiễu UART:
-```
-+--------+--------+--------+------------+-------------------------+------------+------------+
-| SOF1   | SOF2   | MSG_ID | LENGTH     | PAYLOAD (0..128 bytes)  | CRC16_H    | CRC16_L    |
-| (0xAA) | (0x55) | (1 B)  | (1 B: 0..N)| (N Bytes)               | (1 B)      | (1 B)      |
-+--------+--------+--------+------------+-------------------------+------------+------------+
-```
-- **SOF**: `0xAA 0x55` (2 bytes đồng bộ bắt đầu frame).
-- **MSG_ID**: Mã định danh thông điệp (1 byte).
-- **LENGTH**: Độ dài vùng Payload (1 byte, tối đa 128 bytes).
-- **PAYLOAD**: Dữ liệu có cấu trúc nhị phân (struct packed, little-endian).
-- **CRC16**: CRC16-CCITT (Polynomial `0x1021`, Seed `0xFFFF`) phủ toàn bộ từ `MSG_ID` đến hết `PAYLOAD`.
-
-### 2.2 Danh Mục Thông Điệp (Message Catalog)
-1. **Nhóm Điều Khiển Lộ Trình (Route / Mission Control)**:
-   - `0x10` `CMD_ROUTE_LOAD`: Nạp chuỗi bước hành động `[num_steps] [target_rpm] [actions: FORWARD, TURN_LEFT, TURN_RIGHT, STOP]`.
-   - `0x11` `CMD_ROUTE_START`: Kích hoạt xe bắt đầu chạy theo lộ trình đã nạp.
-   - `0x12` `CMD_ROUTE_CANCEL` / `0x02` `CMD_EMERGENCY_STOP`: Phanh dừng khẩn cấp và hủy lộ trình.
-   - `0x90` `EVENT_MISSION_STATUS`: STM32 báo trạng thái `[state: IDLE, RUNNING, COMPLETED, ERROR_LOST] [current_step]`.
-2. **Nhóm Chẩn Đoán & Kiểm Thử Phần Cứng (Diagnostics & Test Mode)**:
-   - `0x20` `CMD_DIAG_STEP_TEST`: Test đáp ứng bước động cơ (`motor_id`, `pwm`, `duration_ms`).
-   - `0x21` `CMD_DIAG_SET_SPEED`: Đặt tốc độ PWM trực tiếp (`left`, `right`).
-   - `0x22` `CMD_DIAG_SET_RPM`: Đặt vận tốc vòng kín PI (`left_rpm`, `right_rpm`).
-   - `0x23` `CMD_DIAG_GET_ENC` & `0xA3` `RESP_DIAG_ENC`: Đọc số xung encoder 2 bánh (`enc_l`, `enc_r`).
-   - `0x24` `CMD_DIAG_RESET_ENC`: Reset encoder về 0.
-   - `0x25` `CMD_DIAG_PI_TUNE`: Cập nhật thông số PID (`Kp`, `Ki`, `Kff`).
-   - `0x26` `CMD_DIAG_LINE_TEST`: Chạy bài test cảm biến IR (`mode: SENSOR, CALIB, TRACK, STOP`).
-3. **Nhóm Hệ Thống & Giám Sát**:
-   - `0x01` `CMD_PING` & `0x81` `RESP_PONG`: Kiểm tra kết nối 2 MCU.
-   - `0x80` `RESP_ACK`: Phản hồi kết quả nhận lệnh (`acked_msg_id`, `status_code`).
-   - `0x99` `MSG_LOG`: Đóng gói chuỗi log debug gửi sang ESP32.
-   - `0x91` `MSG_TELEMETRY`: Định kỳ gửi tốc độ thực, góc Odometry và bitmask cảm biến IR.
-
-### 2.3 Gỡ Bỏ SEGGER RTT & Chuyển Đổi Hệ Thống Log
-- Loại bỏ thư viện `SEGGER_RTT` khỏi `CMakeLists.txt` và thư mục `Drivers/`.
-- Macro `AGV_LOG(fmt, ...)` định dạng chuỗi vào bộ đệm tĩnh và đóng gói thành gói tin nhị phân `MSG_LOG` (ID `0x99`) gửi qua `BSP_UART_Write()` sang ESP32.
-- Bật `AGV_ENABLE_UART_TTL 1` trong `app_config.h`, khởi tạo `BSP_UART_Init(&huart1)` trong `App_Init()`.
-
-### 2.4 Quản Lý Chuỗi Hành Động Tự Hành (Autonomous Route Queue)
-- STM32 lưu trữ một mảng tĩnh các bước hành động (`MAX_ROUTE_STEPS = 16`).
-- Khi bám line, nếu mảng IR quét thấy vạch ngang:
-  - Hành động hiện tại là `ACTION_FORWARD`: Bỏ qua/vượt qua ngã rẽ rồi tăng biến đếm bước.
-  - Hành động hiện tại là `ACTION_TURN_LEFT`: Quay tại chỗ sang trái cho đến khi mắt IR giữa bắt lại line nhánh.
-  - Hành động hiện tại là `ACTION_TURN_RIGHT`: Quay tại chỗ sang phải cho đến khi mắt IR giữa bắt lại line nhánh.
-  - Hành động hiện tại là `ACTION_STOP` hoặc hết danh sách bước: Phanh dừng, chuyển trạng thái sang `COMPLETED`, phát gói `EVENT_MISSION_STATUS(COMPLETED)` lên ESP32.
+## 1. Overview
+Dự án AGV bước vào giai đoạn hoàn thiện vi điều khiển thứ hai: **ESP32 Gateway & Coordinator (`agv_esp32`)** trên môi trường **ESP-IDF v6.x (v6.0.2)**. 
+Hệ thống kết nối trực tiếp với **STM32F103** qua UART2 (GPIO16/17 @ 115200 8N1) bằng giao thức nhị phân chuẩn `comms_protocol` (ADR-003), đồng thời cung cấp cổng kết nối Bluetooth Low Energy (NimBLE NUS) và bộ công cụ chẩn đoán không dây trên máy tính (`agv_ble_controller.py`) phục vụ:
+- Điều khiển lộ trình tự hành & dừng phanh khẩn cấp.
+- Đọc cảm biến & kiểm tra động cơ.
+- Chẩn đoán đáp ứng bước động cơ (`plot_step`).
+- Giám sát trực quan 5 mắt IR thời gian thực (`monitor_ir`).
+- Hiệu chuẩn quang học bàn test không dây (`calibrate_line`).
 
 ---
 
-## 3. Dependency Graph
+## 2. Architecture Decisions & Design Patterns
+
+### 2.1 Tách Biệt Ranh Giới Giao Thức (Zero-HAL Protocol Shared Library)
+- Sử dụng trực tiếp `comms_protocol.c` và `comms_protocol.h` (đặt trong `components/comms_protocol/`) dùng chung 100% với STM32.
+- Bảo vệ dữ liệu bằng CRC16-CCITT (Poly `0x1021`, Init `0xFFFF`) trên tất cả các khung truyền MCU-to-MCU.
+
+### 2.2 Luồng UART Nhị Phân Zero-Malloc (FreeRTOS RX Task)
+- `uart_service` gỡ bỏ hoàn toàn logic cắt chuỗi ASCII CLI cũ (`\r\n`).
+- Triển khai `uart_rx_task` tĩnh (Stack 4KB, Priority 10) đọc byte stream qua `uart_read_bytes()` nạp trực tiếp vào máy trạng thái `agv_parser_feed_byte()`.
+- Tuyệt đối không dùng `malloc()` / `free()` trong chu trình streaming, loại trừ nguy cơ phân mảnh heap.
+- Cung cấp hàm callback đăng ký nhận frame: `uart_service_register_frame_cb(agv_frame_rx_cb_t cb, void *user_data)`.
+
+### 2.3 Cầu Nối Lệnh BLE Cấp Cao & Định Dạng Phản Hồi (`ble_cmd_dispatcher`)
+- Nhận chuỗi văn bản UTF-8/ASCII từ BLE NUS RX Characteristic (`on_ble_data_received`).
+- Phân tích cú pháp (tokenizer): `PING`, `STOP`, `STEP_TEST`, `MONITOR_IR`, `LINE_CALIB`, `LINE_TEST`, `GET_ENC`, `RESET_ENC`, `SET_SPEED`, `SET_RPM`, `PI_TUNE`, `ROUTE_LOAD`, `ROUTE_START`, `ROUTE_CANCEL`, `ROUTE_TEST`, `HELP`.
+- Đóng gói frame nhị phân tương ứng và gửi sang STM32 qua `uart_service_send_msg()`.
+- Đăng ký callback từ `uart_service`: định dạng các frame phản hồi từ STM32 (`ACK`, `PONG`, `LOG`, `DATA:LINE`, `DATA`, `MISSION_STATUS`, `ENC_DATA`) thành chuỗi text có tiền tố rõ ràng và bắn về client qua `ble_nus_send_str()`.
+
+### 2.4 Tối Ưu Băng Thông & MTU Cho Telemetry Tốc Độ Cao
+- Kích hoạt MTU thương lượng trên NimBLE NUS (`CONFIG_BT_NIMBLE_ATT_PREFERRED_MTU=256`), cho phép một dòng telemetry `DATA:LINE,...` (khoảng 65 bytes) hoặc `DATA:...` được gửi trọn vẹn trong 1 packet notification duy nhất mà không bị cắt vụn.
+
+### 2.5 Bộ Công Cụ Chẩn Đoán Không Dây Trên PC (`tools/agv_ble_controller.py`)
+- Xây dựng trên nền thư viện `bleak` và `asyncio`.
+- Hỗ trợ cả 2 chế độ:
+  1. **Interactive REPL Prompt**: Nhập lệnh trực tiếp, xem log màu, phím tắt nhanh.
+  2. **Standalone Sub-commands**:
+     - `--monitor-ir [ms]`: Render thanh đo trực quan Unicode `|██████░░░░|` ở tần số 20Hz.
+     - `--calibrate [ms]`: Quét min/max, kiểm tra $\Delta \ge 100$, xuất file `app_line_calib_defaults.h`.
+     - `--step <motor> <pwm> <ms> [--plot]`: Ghi CSV và vẽ đồ thị Matplotlib.
+
+---
+
+## 3. Dependency Graph & Build Order
 
 ```
-[Services/comms_protocol] (Pure C Binary Protocol Parser & Packer)
-         │
-         ├── [BSP/bsp_uart] (UART1 DMA RX/TX Circular RingBuffer)
-         │        │
-         │        └── [Application/app_comms] (Command Dispatcher & Binary Frame Handler)
-         │                 │
-         │                 ├── [Application/app_line_follow] (Route Queue & Crossline Actions)
-         │                 ├── [Application/app_motor_control] (Closed-loop Speed Execution)
-         │                 └── [Diagnostics/diag_motor & diag_ir] (Bench Test Execution)
-         │
-         ├── [Gỡ Bỏ Drivers/SEGGER_RTT] (Thay bằng AGV_LOG binary frame)
-         │
-         └── [docs/esp32_uart_protocol_guide.md] (Tài liệu chi tiết & Sample Code cho ESP32)
+[comms_protocol] (Pure C Protocol Component)
+       │
+       ▼
+[uart_service] (UART2 Driver & Binary Stream Parser Task)
+       │
+       ▼
+[ble_cmd_dispatcher] & [main.c] (BLE NUS <-> Binary UART Bridge + BOOT Button)
+       │
+       ▼
+[tools/agv_ble_controller.py] (Python Bleak Wireless Client & Diagnostics Suite)
 ```
 
 ---
 
-## 4. Danh Sách Task Triển Khai
-Chi tiết tại `tasks/todo.md`.
-- **Phase 1**: Binary Protocol Engine & Shared C Library (Task 1, 2)
-- **Phase 2**: UART DMA Binding & SEGGER RTT Removal (Task 3, 4)
-- **Phase 3**: Route Queue & Autonomous Crossline Navigation (Task 5, 6)
-- **Phase 4**: Diagnostics Support & End-to-End Verification (Task 7, 8)
-- **Phase 5**: ESP32 Firmware Development Documentation (Task 9)
+## 4. Phase Breakdown & Verification Checkpoints
+
+- **Phase 1: Foundation & Binary UART Service** (Task 1, 2)
+  - Verify `comms_protocol` component.
+  - Refactor `uart_service` sang bộ giải mã nhị phân stream byte Zero-malloc.
+  - *Checkpoint 1*: Component build sạch sẽ.
+- **Phase 2: BLE Command Bridge & Dispatcher** (Task 3, 4)
+  - Xây dựng `ble_cmd_dispatcher` dịch 15 lệnh text sang binary frame và định dạng phản hồi.
+  - Cập nhật `main.c`, kích hoạt MTU 256 trong `ble_nus`, gán nút BOOT GPIO0.
+  - *Checkpoint 2*: Toàn bộ firmware `agv_esp32` biên dịch thành công 100% trên ESP-IDF v6.x.
+- **Phase 3: Python BLE Wireless Client & Diagnostics Tool** (Task 5, 6, 7)
+  - Triển khai `agv_ble_controller.py` với REPL prompt và streaming parser.
+  - Tích hợp 3 module chẩn đoán: `monitor_ir`, `calibrate_line`, `plot_step`.
+  - Viết bộ unit test tự động `test_ble_controller.py` kiểm thử toàn bộ parser/validator logic.
+  - *Checkpoint 3*: Unit test pass 100%, sẵn sàng chạy thực tế.
 
 ---
 
-## 5. Rủi Ro & Giải Pháp Giảm Thiểu (Risks & Mitigations)
-| Rủi Ro | Mức Độ | Giải Pháp |
+## 5. Risks and Mitigations
+
+| Rủi Ro | Mức Độ | Biện Pháp Giảm Thiểu |
 |---|---|---|
-| Nhiễu UART khi động cơ hoạt động | Trung bình | Khung truyền có CRC16-CCITT bảo vệ; bỏ qua frame hỏng mà không gây kẹt parser. |
-| STM32 nhận diện nhầm vạch ngang nhiều lần liên tiếp | Cao | Cơ chế debounce thời gian (chặn nhận diện lại vạch ngang trong 300ms sau khi chuyển bước). |
-| Tràn bộ đệm UART TX khi in log quá nhiều | Trung bình | Rate-limit cho log, gói log có độ dài tối đa 64 byte, hàng đợi TX RingBuffer 512 byte. |
-| ESP32 mất kết nối giữa đường | Cao | Timeout Heartbeat an toàn: nếu không nhận được ping/keepalive từ ESP32 sau 3 giây, STM32 tự phanh dừng. |
+| **Nghẽn hàng đợi BLE khi stream dữ liệu 20Hz** | Trung bình | Tăng MTU lên 256 byte, mỗi gói telemetry gửi trong 1 notification duy nhất; client dùng async queue không block UI. |
+| **Byte rác UART do động cơ đảo chiều** | Trung bình | FSM `agv_parser_feed_byte` tự động đồng bộ lại Header `0xAA 0x55` và bỏ qua frame sai CRC16. |
+| **Tràn bộ đệm Ringbuffer UART trên ESP32** | Thấp | Cấu hình kích thước RX Ringbuffer của ESP-IDF UART driver lên 2048 bytes. |
+| **Lỗi tương thích API ESP-IDF v6.x** | Trung bình | Sử dụng các driver header mới (`driver/uart.h`, `driver/gpio.h`), cấu hình `sdkconfig.defaults` chuẩn xác. |

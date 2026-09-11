@@ -1,188 +1,178 @@
-# Task List: Giao Tiếp UART Nhị Phân STM32 - ESP32 & Gỡ Bỏ RTT
+# Task List: AGV ESP32 Binary Gateway & Wireless BLE Diagnostics
 
-## Phase 1: Binary Protocol Engine & Shared C Library
+## Phase 1: Foundation & Binary UART Service
 
-### Task 1: Thiết Kế & Xây Dựng Bộ Giao Thức Nhị Phân C Thuần (`comms_protocol`)
-**Description:** Xây dựng module C thuần (Zero-HAL, không malloc) bao gồm cấu trúc khung truyền (`SOF 0xAA 0x55`, `MSG_ID`, `LEN`, `PAYLOAD`, `CRC16`), giải thuật CRC16-CCITT, máy trạng thái giải mã dòng byte (`agv_protocol_feed_byte`) và các hàm đóng gói gói tin (`agv_protocol_pack_*`). File header có thể dùng chung 100% cho cả STM32 và ESP32.
+### Task 1: Thiết Lập & Kiểm Tra Component `comms_protocol` Trong `agv_esp32`
+**Description:** Đảm bảo component `components/comms_protocol` được đăng ký đúng chuẩn CMake của ESP-IDF v6.x, cung cấp đầy đủ các struct packed, enum mã lệnh và hàm pack/parse C thuần dùng chung với STM32.
 **Acceptance criteria:**
-- [x] Cung cấp enum `agv_msg_id_t` đầy đủ cho Route (`ROUTE_LOAD`, `ROUTE_START`, `ROUTE_CANCEL`), Diag (`STEP_TEST`, `SET_SPEED`, `SET_RPM`, `GET_ENC`, `RESET_ENC`, `PI_TUNE`, `LINE_TEST`), System (`PING`, `ACK`, `LOG`, `MISSION_STATUS`).
-- [x] Hàm `agv_protocol_feed_byte()` xử lý luồng byte streaming, phát hiện đúng SOF, kiểm tra độ dài và đối chiếu CRC16.
-- [x] Các hàm pack đóng gói chuẩn little-endian, không phụ thuộc kiến trúc vi điều khiển.
+- [ ] File `components/comms_protocol/CMakeLists.txt` đăng ký thư viện với thư mục `include/` và mã nguồn `comms_protocol.c`.
+- [ ] Component không phụ thuộc bất kỳ thư viện HAL vi điều khiển nào (Zero-HAL, pure C).
+- [ ] Có thể `#include "comms_protocol.h"` từ bất kỳ component nào trong `agv_esp32`.
 **Verification:**
-- [x] Tests pass: Chạy unit test parser qua Python script mô phỏng (`tests/test_binary_protocol.py`).
-- [x] Build succeeds: `cmake --build build/Debug` không có lỗi cú pháp.
+- [ ] Build succeeds: `idf.py reconfigure` nhận diện thành công component `comms_protocol`.
 **Dependencies:** None
 **Files touched:**
-- `Services/Inc/comms_protocol.h`
-- `Services/Src/comms_protocol.c`
+- `agv_esp32/components/comms_protocol/CMakeLists.txt`
+- `agv_esp32/components/comms_protocol/include/comms_protocol.h`
+- `agv_esp32/components/comms_protocol/comms_protocol.c`
+**Estimated scope:** Small (1 file)
 
 ---
 
-### Task 2: Xây Dựng Bộ Test Tự Động Cho Giao Thức Nhị Phân (`test_binary_protocol.py`)
-**Description:** Viết kịch bản kiểm thử toàn diện cho giao thức nhị phân bằng Python: kiểm thử pack/unpack từng loại thông điệp, kiểm thử byte rác, frame cắt vụn (fragmented stream), sai lệch CRC16, và tràn buffer payload.
+### Task 2: Tái Cấu Trúc `uart_service` Thành Bộ Thu Phát Khung Truyền Nhị Phân Zero-Malloc
+**Description:** Loại bỏ cơ chế phát hiện pattern chuỗi ký tự ASCII (`\r\n`) trong `uart_service`. Thay thế bằng FreeRTOS Task `uart_rx_task` đọc luồng byte từ UART2 (`GPIO16/17` @ 115200) và nạp vào máy trạng thái `agv_parser_feed_byte()`. Bổ sung API gửi frame nhị phân `uart_service_send_frame()`, `uart_service_send_msg()` và cơ chế đăng ký callback `uart_service_register_frame_cb()`.
 **Acceptance criteria:**
-- [x] Kiểm thử thành công 100% các lệnh: PING, SET_SPEED, STEP_TEST, PI_TUNE, LINE_TEST, ROUTE_LOAD, LOG.
-- [x] Xác minh parser phục hồi ngay lập tức khi gặp byte rác hoặc CRC sai mà không bị deadlock.
+- [ ] Header `uart_service.h` định nghĩa kiểu callback `agv_frame_rx_cb_t` và cấu trúc cấu hình `uart_service_config_t`.
+- [ ] `uart_rx_task` cấp phát tĩnh toàn bộ buffer giải mã, tuyệt đối không gọi `malloc`/`free` trong luồng nhận byte.
+- [ ] Khi FSM phát hiện frame hoàn chỉnh hợp lệ CRC16, gọi callback chuyển giao dữ liệu tức thời.
+- [ ] Hàm `uart_service_send_msg()` đóng gói đúng Header `0xAA 0x55`, ID, Length, Payload và CRC16 trước khi gửi qua `uart_write_bytes()`.
 **Verification:**
-- [x] Tests pass: `py -3 -m unittest tests/test_binary_protocol.py` đạt 100% pass (9/9 tests).
+- [ ] Build succeeds: `idf.py build` biên dịch component `uart_service` không có cảnh báo hoặc lỗi cú pháp.
 **Dependencies:** Task 1
 **Files touched:**
-- `tests/test_binary_protocol.py`
+- `agv_esp32/components/uart_service/include/uart_service.h`
+- `agv_esp32/components/uart_service/uart_service.c`
+- `agv_esp32/components/uart_service/CMakeLists.txt`
+**Estimated scope:** Medium (3 files)
 
 ---
 
-### Checkpoint 1: Sau Task 1 & 2
-- [x] Giao thức nhị phân hoàn thiện, độc lập phần cứng (Zero-HAL)
-- [x] Bộ test unit test Python pass 100%
-- [x] Sẵn sàng tích hợp vào driver phần cứng UART và hệ thống log
+### Checkpoint 1: Sau Phase 1
+- [ ] `comms_protocol` và `uart_service` biên dịch sạch sẽ trên ESP-IDF v6.x.
+- [ ] Tầng truyền thông nhị phân phần cứng sẵn sàng tiếp nhận và điều phối lệnh.
 
 ---
 
-## Phase 2: UART Hardware Binding & SEGGER RTT Removal
+## Phase 2: BLE Command Bridge & Dispatcher
 
-### Task 3: Gỡ Bỏ SEGGER RTT & Chuyển Hệ Thống Log Sang Gói Tin Nhị Phân Qua UART DMA
-**Description:** Loại bỏ hoàn toàn mã nguồn và header `SEGGER_RTT` khỏi dự án. Thay thế các lệnh in log cũ bằng macro `AGV_LOG()` đóng gói chuỗi vào frame `MSG_LOG` (ID `0x99`) gửi qua UART1 DMA. Cấu hình `AGV_ENABLE_UART_TTL = 1` trong `app_config.h` và khởi tạo `BSP_UART_Init(&huart1)` trong `App_Init()`.
+### Task 3: Xây Dựng Module `ble_cmd_dispatcher` (Text CLI -> Binary UART & Response Formatter)
+**Description:** Tạo module `ble_cmd_dispatcher.c/.h` trong `main/` đảm nhiệm vai trò cầu nối 2 chiều:
+1. Chiều Xuống (BLE -> STM32): Nhận chuỗi text từ BLE NUS, phân tích cú pháp và chuyển đổi thành gói tin nhị phân tương ứng:
+   - `PING` $\rightarrow$ `AGV_MSG_PING` (0x01)
+   - `STOP` / `EMG` $\rightarrow$ `AGV_MSG_EMERGENCY_STOP` (0x02)
+   - `STEP_TEST <motor> <pwm> <ms>` $\rightarrow$ `AGV_MSG_DIAG_STEP_TEST` (0x20)
+   - `SET_SPEED <left> <right>` $\rightarrow$ `AGV_MSG_DIAG_SET_SPEED` (0x21)
+   - `SET_RPM <left> <right>` $\rightarrow$ `AGV_MSG_DIAG_SET_RPM` (0x22)
+   - `GET_ENC` $\rightarrow$ `AGV_MSG_DIAG_GET_ENC` (0x23)
+   - `RESET_ENC` $\rightarrow$ `AGV_MSG_DIAG_RESET_ENC` (0x24)
+   - `PI_TUNE <kp> <ki> <kff>` $\rightarrow$ `AGV_MSG_DIAG_PI_TUNE` (0x25)
+   - `MONITOR_IR [ms]` $\rightarrow$ `AGV_MSG_DIAG_LINE_TEST` (0x26, mode=0, rpm=0)
+   - `LINE_CALIB [ms]` $\rightarrow$ `AGV_MSG_DIAG_LINE_TEST` (0x26, mode=1, rpm=0)
+   - `LINE_TEST <mode> <ms> <rpm>` $\rightarrow$ `AGV_MSG_DIAG_LINE_TEST` (0x26)
+   - `ROUTE_LOAD <rpm> <actions>` $\rightarrow$ `AGV_MSG_ROUTE_LOAD` (0x10)
+   - `ROUTE_START` $\rightarrow$ `AGV_MSG_ROUTE_START` (0x11)
+   - `ROUTE_CANCEL` $\rightarrow$ `AGV_MSG_ROUTE_CANCEL` (0x12)
+   - `ROUTE_TEST` $\rightarrow$ Chuỗi mẫu `ROUTE_LOAD` + `ROUTE_START`
+   - `HELP` $\rightarrow$ In bảng hướng dẫn cú pháp
+2. Chiều Lên (STM32 -> BLE): Nhận frame nhị phân từ callback của `uart_service`, định dạng thành chuỗi ký tự có tiền tố rõ ràng (`[ACK]`, `[RESP]`, `[STM32 LOG]`, `[MISSION]`, `[ENCODER]`, `DATA:...`, `DATA:LINE,...`) và gửi về client qua `ble_nus_send_str()`.
 **Acceptance criteria:**
-- [x] `CMakeLists.txt` không còn liên kết tới `Drivers/SEGGER_RTT`.
-- [x] Không còn bất kỳ file nào trong `Application/`, `Diagnostics/`, `BSP/` `#include "SEGGER_RTT.h"`.
-- [x] `app_config.h` kích hoạt `AGV_ENABLE_UART_TTL 1`.
-- [x] `App_Init()` gọi `BSP_UART_Init(&huart1)` để kích hoạt nhận DMA Circular và ngắt UART IDLE.
+- [ ] Phân tích chính xác tất cả 15 lệnh text trên, có kiểm tra lỗi cú pháp và kiểm tra giá trị tham số hợp lệ.
+- [ ] Định dạng đầy đủ các thông điệp phản hồi từ STM32, không làm mất mát ký tự.
+- [ ] Các chuỗi telemetry bắt đầu bằng `DATA:` được truyền nguyên bản để client PC dễ dàng parse regex.
 **Verification:**
-- [x] Build succeeds: `cmake --build build/Debug` hoàn tất thành công 100%, không còn cảnh báo hoặc thiếu symbol RTT.
-- [x] Grep kiểm tra: `grep -r "SEGGER_RTT" Application/ Diagnostics/ BSP/ Core/` trả về rỗng.
-**Dependencies:** Task 1
+- [ ] Build succeeds: `idf.py build` hoàn tất không lỗi.
+**Dependencies:** Task 2
 **Files touched:**
-- `CMakeLists.txt`
-- `Application/Inc/app_config.h`
-- `Application/Src/app_main.c`
-- `Diagnostics/Src/diag_motor.c`
-- `Diagnostics/Src/diag_ir.c`
-- `Application/Src/app_motor_control.c`
-- `BSP/Src/bsp_ir.c`
+- `agv_esp32/main/ble_cmd_dispatcher.h`
+- `agv_esp32/main/ble_cmd_dispatcher.c`
+- `agv_esp32/main/CMakeLists.txt`
+**Estimated scope:** Medium (3 files)
 
 ---
 
-### Task 4: Cập Nhật Tài Liệu Cấu Hình Dự Án (`GEMINI.md` & Script)
-**Description:** Cập nhật file chỉ dẫn `GEMINI.md` phản ánh việc chuyển đổi từ RTT sang UART1 TTL kết nối ESP32.
+### Task 4: Cập Nhật `main.c`, Kích Hoạt MTU 256 Cho `ble_nus` & Gán Nút BOOT
+**Description:** Sửa lỗi cú pháp trong `main.c`, kết nối toàn bộ các thành phần hệ thống:
+- Cấu hình MTU kích thước lớn $\ge 256$ byte trong `sdkconfig.defaults` và `ble_nus.c` để truyền tải telemetry tốc độ cao mà không ngắt gói.
+- Đăng ký `ble_cmd_dispatcher_handle_text` làm callback nhận dữ liệu của BLE NUS.
+- Đăng ký `ble_cmd_dispatcher_handle_frame` làm callback nhận frame của UART Service.
+- Cấu hình nút BOOT (GPIO0): khi ấn nút gửi frame `AGV_MSG_PING` xuống STM32 và in thông báo lên BLE.
 **Acceptance criteria:**
-- [x] `GEMINI.md` loại bỏ hướng dẫn OpenOCD RTT server port 9090, cập nhật baud rate UART 115200 và kết nối chân PA9/PA10.
-- [x] Thư mục build được dọn sạch và rebuild từ đầu không lỗi.
+- [ ] Loại bỏ hoàn toàn các lỗi cú pháp cũ trong `main.c`.
+- [ ] ESP32 khởi động sạch sẽ: NVS flash, NimBLE stack, UART2 driver, BOOT button handler.
+- [ ] Cấu hình MTU 256 bytes hoạt động với client BLE.
 **Verification:**
-- [x] Build succeeds: `ninja -C build/Debug clean && cmake --build build/Debug`
+- [ ] Build succeeds: `idf.py build` hoàn tất 100% không cảnh báo lỗi trên ESP-IDF v6.x (`v6.0.2`).
 **Dependencies:** Task 3
 **Files touched:**
-- `GEMINI.md`
+- `agv_esp32/main/main.c`
+- `agv_esp32/components/ble_nus/ble_nus.c`
+- `agv_esp32/sdkconfig.defaults`
+**Estimated scope:** Small (3 files)
 
 ---
 
-### Checkpoint 2: Sau Task 3 & 4
-- [x] Mã nguồn STM32 hoàn toàn sạch bóng thư viện SEGGER RTT
-- [x] Firmware biên dịch thành công, UART DMA sẵn sàng truyền nhận 2 chiều
-- [x] Hệ thống log debug tự động chuyển thành gói nhị phân gửi qua UART1
+### Checkpoint 2: Sau Phase 2
+- [ ] Firmware `agv_esp32` đã sẵn sàng 100% mã nguồn, biên dịch thành công nhị phân `.bin`.
+- [ ] Đầy đủ các kênh BLE NUS <-> Binary UART2 DMA và xử lý nút bấm vật lý.
 
 ---
 
-## Phase 3: Route Queue & Autonomous Crossline Navigation
+## Phase 3: Python BLE Wireless Client & Diagnostics Tool
 
-### Task 5: Nâng Cấp `app_line_follow` Hỗ Trợ Chuỗi Lộ Trình Tự Hành (Route Queue FSM)
-**Description:** Nâng cấp máy trạng thái bám line trong `app_line_follow` để lưu trữ chuỗi bước hành động `route_actions[]`. Khi phát hiện vạch ngang ngã rẽ:
-- Thực hiện hành động tại bước hiện tại (`FORWARD`: chạy qua vạch; `TURN_LEFT`: quay trái 90 độ bắt lại line; `TURN_RIGHT`: quay phải 90 độ bắt lại line; `STOP`: phanh dừng xe).
-- Tự động nhảy sang bước tiếp theo với cơ chế debounce chống quét lặp vạch ngang.
-- Khi hoàn thành bước cuối cùng, dừng xe và kích hoạt callback báo hoàn thành lộ trình.
+### Task 5: Xây Dựng Lõi Client BLE Tương Tác (`agv_ble_controller.py`)
+**Description:** Xây dựng script Python PC sử dụng thư viện `bleak` và `asyncio`:
+- Tự động quét BLE tìm thiết bị `AGV_ESP32` (hoặc Service UUID `6E400001-B5A3-F393-E0A9-E50E24DCCA9E`).
+- Kết nối, thương lượng MTU và đăng ký nhận thông báo (Notification) trên characteristic TX.
+- Cung cấp giao diện dòng lệnh tương tác REPL prompt (hỗ trợ lịch sử lệnh, thoát bằng `quit`/`exit`).
+- In màu các dòng log theo tiền tố (`[ACK]`, `[STM32 LOG]`, `[MISSION]`, `[ENCODER]`).
 **Acceptance criteria:**
-- [x] Định nghĩa `agv_route_action_t`: `ACTION_STOP = 0`, `ACTION_FORWARD = 1`, `ACTION_TURN_LEFT = 2`, `ACTION_TURN_RIGHT = 3`.
-- [x] Hỗ trợ hàm `App_LineFollow_LoadRoute(const uint8_t *actions, uint8_t count, float target_rpm)`.
-- [x] Xử lý ngã rẽ chính xác, không bị kích hoạt trùng nhiều lần tại một vạch ngang (debounce >= 300ms).
-- [x] Phát tín hiệu sự kiện khi kết thúc lộ trình hoặc khi mất line.
+- [ ] Script tự động tìm và kết nối nhanh tới ESP32 qua BLE.
+- [ ] Nhập lệnh `ping`, `stop`, `get_enc`, `reset_enc`, `set_rpm`, `route_test` hoạt động mượt mà.
+- [ ] Xử lý ngắt kết nối an toàn khi người dùng bấm Ctrl+C hoặc thoát chương trình.
 **Verification:**
-- [x] Tests pass: Bộ test mô phỏng FSM logic ngã rẽ trong Python pass.
-- [x] Build succeeds: `cmake --build build/Debug` pass.
-**Dependencies:** Task 1, Task 3
+- [ ] Syntax check: `python -m py_compile agv_esp32/tools/agv_ble_controller.py`.
+**Dependencies:** Task 4
 **Files touched:**
-- `Application/Inc/app_line_follow.h`
-- `Application/Src/app_line_follow.c`
+- `agv_esp32/tools/agv_ble_controller.py`
+**Estimated scope:** Medium (1 file)
 
 ---
 
-### Task 6: Tích Hợp Xử Lý Gói Tin Nhị Phân Trong `app_comms`
-**Description:** Viết lại `app_comms.c` để đọc stream dữ liệu từ `BSP_UART_ReadByte()`, đưa vào bộ phân giải `agv_protocol_feed_byte()`. Khi có frame hợp lệ:
-- Điều phối các lệnh điều khiển lộ trình (`CMD_ROUTE_LOAD`, `CMD_ROUTE_START`, `CMD_ROUTE_CANCEL`, `CMD_EMERGENCY_STOP`).
-- Phản hồi ACK nhị phân (`RESP_ACK`) và phát sự kiện trạng thái (`EVENT_MISSION_STATUS`).
-- Cung cấp hàm gửi log nhị phân `App_Comms_SendLog(const char *text)`.
+### Task 6: Tích Hợp Các Tính Năng Chẩn Đoán Không Dây Vào Client (`monitor_ir`, `calibrate`, `plot_step`)
+**Description:** Mở rộng `agv_ble_controller.py` với 3 chế độ chẩn đoán chuyên sâu:
+1. `monitor_ir [duration]`:
+   - Gửi `MONITOR_IR <ms>` qua BLE.
+   - Bắt dòng dữ liệu `DATA:LINE,<ms>,<raw0..4>,<norm0..4>,<err>,<seen>`.
+   - Xóa màn hình console và render thanh đo đồ họa Unicode `|██████░░░░|` cho cả 5 mắt cảm biến ở tần số 20Hz, hiển thị sai số $e_{line}$ và trạng thái bắt vạch.
+2. `calibrate [duration]`:
+   - Gửi `LINE_CALIB <ms>` qua BLE.
+   - Theo dõi running min/max raw ADC khi người dùng lia giấy trắng và vạch đen.
+   - Kiểm tra dải động $\Delta_i \ge 100$, in bảng tổng kết và cho phép xuất file `app_line_calib_defaults.h` / `line_calib.json`.
+3. `step <motor> <pwm> <ms> [--plot]`:
+   - Gửi `STEP_TEST <motor> <pwm> <ms>` qua BLE.
+   - Thu thập dòng `DATA:<ms>,...,<rpm>`, lưu vào file CSV `step_response_ble.csv`.
+   - Nếu có cờ `--plot`, mở cửa sổ đồ thị Matplotlib hiển thị đường cong gia tốc, vận tốc đỉnh và vận tốc xác lập.
 **Acceptance criteria:**
-- [x] `App_Comms_Process()` đọc và parse toàn bộ byte sẵn có trong UART RX RingBuffer.
-- [x] Lệnh `CMD_EMERGENCY_STOP` ngắt tức thời mọi chuyển động động cơ và reset lộ trình.
-- [x] Trả về `RESP_ACK` kèm mã trạng thái OK hoặc ERROR.
+- [ ] Chạy trơn tru cả 3 tính năng qua CLI flags (`--monitor-ir`, `--calibrate`, `--step`) lẫn bên trong REPL shell.
+- [ ] Bắt lỗi timeout hoặc mất kết nối giữa chừng mà không bị crash.
 **Verification:**
-- [x] Build succeeds: `cmake --build build/Debug` pass.
-**Dependencies:** Task 1, Task 5
+- [ ] Syntax & dry-run test: Chạy script với `--help` hiển thị đầy đủ các tùy chọn.
+**Dependencies:** Task 5
 **Files touched:**
-- `Application/Inc/app_comms.h`
-- `Application/Src/app_comms.c`
+- `agv_esp32/tools/agv_ble_controller.py`
+**Estimated scope:** Medium (1 file)
 
 ---
 
-## Phase 4: Diagnostics Support & Verification
-
-### Task 7: Tích Hợp Toàn Bộ Lệnh Chẩn Đoán & Kiểm Thử Phần Cứng Qua Binary Frame
-**Description:** Kết nối các thông điệp chẩn đoán nhị phân vào các service thực thi tương ứng:
-- `CMD_DIAG_STEP_TEST` -> gọi `Diag_Motor_Start()`
-- `CMD_DIAG_LINE_TEST` -> gọi `Diag_IR_Start()`
-- `CMD_DIAG_SET_SPEED` & `CMD_DIAG_SET_RPM` -> gọi `BSP_Motor_SetSpeeds()` / `App_MotorControl_SetTargetRPM()`
-- `CMD_DIAG_GET_ENC` -> đọc `BSP_Encoder_GetCount()` và gửi frame `RESP_DIAG_ENC`
-- `CMD_DIAG_RESET_ENC` -> gọi `BSP_Encoder_ResetAll()`
-- `CMD_DIAG_PI_TUNE` -> gọi `App_MotorControl_SetGains()`
+### Task 7: Viết Bộ Test Tự Động Kiểm Thử Client Parser & Protocol Logic (`test_ble_controller.py`)
+**Description:** Viết bộ unit test tự động bằng `unittest` trong Python nhằm kiểm chứng:
+- Thuật toán trích xuất regex cho `DATA:LINE` và `DATA:STEP`.
+- Logic tích lũy min/max và kiểm tra dải động quang học $\Delta \ge 100$ trong calibration.
+- Bộ tokenizer phân tích lệnh text của dispatcher.
+- Đảm bảo bộ công cụ hoạt động ổn định và tin cậy trước khi nạp vào mạch thực tế.
 **Acceptance criteria:**
-- [x] Tất cả các bài test phần cứng độc lập hoạt động trơn tru qua lệnh nhị phân mà không cần RTT.
-- [x] Đọc được số xung encoder 2 bánh trả về trong frame nhị phân `RESP_DIAG_ENC`.
+- [ ] Toàn bộ các test case về parsing dòng dữ liệu, kiểm tra ngưỡng calibration và phân tích cú pháp lệnh pass 100%.
 **Verification:**
-- [x] Tests pass: Kiểm thử dispatching các lệnh chẩn đoán.
-- [x] Build succeeds: `cmake --build build/Debug` pass.
+- [ ] Tests pass: `py -3 -m unittest agv_esp32/tools/test_ble_controller.py`.
 **Dependencies:** Task 6
 **Files touched:**
-- `Application/Src/app_comms.c`
-- `Diagnostics/Src/diag_motor.c`
-- `Diagnostics/Src/diag_ir.c`
+- `agv_esp32/tools/test_ble_controller.py`
+**Estimated scope:** Small (1 file)
 
 ---
 
-### Task 8: Kiểm Thử Toàn Diện Tích Hợp & End-to-End Simulation
-**Description:** Viết test script Python mô phỏng máy chủ ESP32: đóng gói frame UART nhị phân, gửi lệnh nạp lộ trình FSM, kích hoạt các chế độ test bàn, xác minh frame ACK, frame trạng thái hoàn thành và frame log từ STM32.
-**Acceptance criteria:**
-- [x] Toàn bộ kịch bản giao tiếp giữa ESP32 giả lập và STM32 chạy pass 100%.
-- [x] Cập nhật các file unit test cũ trong `tests/` đồng bộ theo giao thức mới.
-**Verification:**
-- [x] Tests pass: `py -3 -m unittest discover tests` hoàn tất không lỗi (110/110 tests OK).
-**Dependencies:** Task 6, Task 7
-**Files touched:**
-- `tests/test_e2e_comms.py`
-- `tests/test_app_comms_refactor.py`
-- `tests/test_app_line_follow_integration.py`
-- `tests/test_comms_protocol.py`
-
----
-
-### Checkpoint 3: Sau Task 5-8
-- [x] STM32 hoàn tất hỗ trợ đầy đủ các lệnh Lộ trình tự hành và Chẩn đoán phần cứng
-- [x] Hệ thống kiểm thử tự động xác nhận tính toàn vẹn của firmware
-- [x] Sẵn sàng bàn giao tài liệu kỹ thuật cho lập trình viên ESP32
-
----
-
-## Phase 5: ESP32 Developer Documentation & Integration Guide
-
-### Task 9: Viết Tài Liệu Chi Tiết Hướng Dẫn Phát Triển Firmware ESP32 (`docs/esp32_uart_protocol_guide.md`)
-**Description:** Viết tài liệu hướng dẫn hoàn chỉnh, chi tiết để kỹ sư lập trình ESP32 (dùng ESP-IDF hoặc Arduino) tích hợp giao tiếp với STM32:
-- Sơ đồ nối dây phần cứng (PA9 TX <-> RX, PA10 RX <-> TX, GND, mức logic 3.3V).
-- Đặc tả khung truyền nhị phân (Frame structure, CRC16 C code, Bảng mã lệnh đầy đủ kèm struct payload).
-- Biểu đồ trình tự FSM: Quy trình nạp lộ trình, bắt đầu chạy, nhận sự kiện đến đích, xử lý sự cố mất vạch và dừng khẩn cấp.
-- Hướng dẫn dùng trực tiếp file `comms_protocol.h` / `.c` trên ESP32.
-- Mã nguồn mẫu (Ready-to-use C/C++ snippet) cho ESP32 khởi tạo UART, gửi lộ trình và parse frame phản hồi.
-**Acceptance criteria:**
-- [x] Tài liệu rõ ràng, dễ hiểu, đầy đủ bảng tra cứu từng byte của mọi gói tin.
-- [x] Có mã nguồn ví dụ mẫu chạy được trên Arduino ESP32 / PlatformIO.
-**Verification:**
-- [x] Kiểm tra tài liệu markdown định dạng chuẩn, đầy đủ bảng tra cứu và diagram.
-**Dependencies:** Task 1, Task 6, Task 7
-**Files touched:**
-- `docs/esp32_uart_protocol_guide.md`
+### Checkpoint 3: Sau Phase 3
+- [ ] Toàn bộ 7 task hoàn tất 100%.
+- [ ] Firmware `agv_esp32` biên dịch thành công sạch sẽ trên ESP-IDF v6.x.
+- [ ] Bộ công cụ Python client và unit test tự động pass 100%.
+- [ ] Hệ thống sẵn sàng cho bước nạp mạch và kiểm thử thực địa không dây trên sa bàn!
