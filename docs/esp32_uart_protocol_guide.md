@@ -7,15 +7,16 @@ Tài liệu này cung cấp toàn bộ đặc tả kỹ thuật, sơ đồ phầ
 ## 1. Kết Nối Phần Cứng (Hardware Wiring)
 
 ### 1.1 Sơ Đồ Chân Nối (Pinout)
-| Tín Hiệu | Chân STM32F103 | Chân ESP32 (Đề xuất) | Ghi Chú |
+| Tín Hiệu | Chân STM32F103 | Chân Freenove ESP32-S3 CAM | Ghi Chú Kỹ Thuật |
 |---|---|---|---|
-| **TX -> RX** | `PA9` (USART1_TX) | `GPIO16` (UART2_RX) | STM32 truyền lệnh/log sang ESP32 |
-| **RX <- TX** | `PA10` (USART1_RX) | `GPIO17` (UART2_TX) | ESP32 truyền lệnh xuống STM32 |
+| **TX ➔ RX** | `PA9` (USART1_TX) | `GPIO 41` (UART1_RX) | STM32 truyền telemetry & log sang ESP32-S3 |
+| **RX 🠄 TX** | `PA10` (USART1_RX) | `GPIO 42` (UART1_TX) | ESP32-S3 truyền lệnh xuống STM32 |
 | **GND** | `GND` | `GND` | **Bắt buộc chung mass (Common Ground)** |
-| **Nguồn 3.3V**| `3.3V` / `5V` | Nguồn chung | Mức logic cả 2 MCU là 3.3V TTL (tương thích 100%) |
+| **Nguồn 3.3V / 5V**| `3.3V` / `5V` | Nguồn chung | Mức logic cả 2 MCU là 3.3V TTL (tương thích 100%) |
 
 > [!IMPORTANT]
-> **Điện áp logic**: STM32F103 và ESP32 đều hoạt động ở mức logic **3.3V**, do đó đấu nối trực tiếp không cần mạch chuyển đổi mức (level shifter). 
+> **Điện áp logic & Cách ly Camera**: STM32F103 và ESP32-S3 đều hoạt động ở mức logic **3.3V**, do đó đấu nối trực tiếp không cần mạch chuyển đổi mức (level shifter). 
+> Cặp chân **GPIO 41 & GPIO 42** được chọn vì tách biệt hoàn toàn với bus Camera OV2640 (GPIO 4–18), PSRAM (GPIO 35–37), thẻ nhớ SD (GPIO 38–40) và LED trên kit Freenove.
 > Tuyệt đối phải nối chung chân **GND** giữa 2 bo mạch để đảm bảo ổn định mức tín hiệu.
 
 ### 1.2 Cấu Hình Cổng UART

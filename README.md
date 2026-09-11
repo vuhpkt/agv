@@ -121,6 +121,7 @@ AGV/
 | **Quyết Định (ADRs)** | [ADR-001: Clean Architecture](docs/decisions/ADR-001-4-tier-clean-architecture.md) | Chuẩn hóa kiến trúc 4 lớp, Zero-HAL Services, IoC Driver |
 | | [ADR-002: Zero-Bloat Diagnostics](docs/decisions/ADR-002-zero-bloat-bench-diagnostics-and-hardware-scaling.md) | Tách biệt mã test khỏi production, tối ưu Flash/RAM |
 | | [ADR-003: Binary Protocol & RTT Removal](docs/decisions/ADR-003-esp32-gateway-binary-protocol-and-rtt-removal.md) | Chuyển sang 2 MCU, giao thức nhị phân UART, bỏ SEGGER RTT |
+| | [ADR-004: Freenove ESP32-S3 CAM Migration & Pinout](docs/decisions/ADR-004-esp32s3-freenove-cam-migration-and-pinout.md) | Chuyển sang Freenove S3 CAM, bảo lưu bus Camera, gán UART1 GPIO 42/41 |
 | **STM32 Motion** | [architecture.md](docs/architecture.md) | Phân tích chi tiết 4 tầng STM32, Non-blocking scheduler |
 | | [hardware_and_pinout.md](docs/hardware_and_pinout.md) | Bảng chân STM32, TB6612, Encoder, 5 mắt IR, AFIO Remap |
 | | [control_theory.md](docs/control_theory.md) | Mô hình $G(s)$, Motor PI, bù Feedforward, Anti-windup clamping |

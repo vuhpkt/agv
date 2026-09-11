@@ -32,15 +32,17 @@ Hệ thống tuân thủ nghiêm ngặt nguyên lý phân tách trách nhiệm g
 └──────────────────────────────┬──────────────────────────────┘
                                │ Bluetooth Low Energy (BLE)
 ┌──────────────────────────────▼──────────────────────────────┐
-│ [ESP32] - BỘ NÃO ĐIỀU PHỐI CẤP CAO (High-Level Master)      │
-│ 1. Gateway kết nối không dây BLE với người dùng.            │
+│ [ESP32-S3] - BỘ NÃO ĐIỀU PHỐI (Freenove ESP32-S3 CAM)        │
+│ 1. Gateway kết nối không dây BLE NUS với người dùng.        │
 │ 2. Quản lý bản đồ Topology (Đồ thị các trạm và nhánh rẽ).   │
 │ 3. Lập kế hoạch đường đi (Route Planner / FSM).             │
 │ 4. Chuyển tiếp log/chẩn đoán từ STM32 lên app người dùng.   │
 │ 5. Phát lệnh Dừng khẩn cấp (Emergency Stop) khi có sự cố.   │
+│ 6. Sẵn sàng tích hợp module Camera và thẻ nhớ SD sau này.   │
 └──────────────────────────────┬──────────────────────────────┘
-                               │ UART1 DMA 115200 8N1 (PA9/PA10)
-                               │ Khung truyền nhị phân có CRC16
+                               │ UART1 DMA 115200 8N1 (CRC16-CCITT)
+                               │ ESP32-S3 GPIO42 (TX) <-> STM32 PA10 (RX)
+                               │ ESP32-S3 GPIO41 (RX) <-> STM32 PA9 (TX)
 ┌──────────────────────────────▼──────────────────────────────┐
 │ [STM32] - BỘ ĐIỀU KHIỂN CHẤP HÀNH (Hard Real-Time Slave)    │
 │ 1. Đọc ADC DMA 5 mắt cảm biến quang trở (Chu kỳ 10ms).      │
