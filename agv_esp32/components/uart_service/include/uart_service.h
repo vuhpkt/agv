@@ -34,9 +34,9 @@ typedef struct {
 } uart_service_config_t;
 
 #define UART_SERVICE_CONFIG_DEFAULT() { \
-    .uart_port = UART_NUM_2,            \
-    .tx_pin = GPIO_NUM_17,              \
-    .rx_pin = GPIO_NUM_16,              \
+    .uart_port = UART_NUM_1,            \
+    .tx_pin = GPIO_NUM_42,              \
+    .rx_pin = GPIO_NUM_41,              \
     .baud_rate = 115200,                \
     .rx_buffer_size = 2048,             \
     .tx_buffer_size = 1024,             \

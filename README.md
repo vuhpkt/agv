@@ -1,15 +1,15 @@
 # AGV Autonomous Mobile Robot - Dual-MCU Architecture
 
-[![Architecture](https://img.shields.io/badge/Architecture-Dual--MCU%20(ESP32%20%2B%20STM32)-orange.svg)]()
+[![Architecture](https://img.shields.io/badge/Architecture-Dual--MCU%20(ESP32--S3%20%2B%20STM32)-orange.svg)]()
 [![STM32](https://img.shields.io/badge/STM32-STM32F103C8T6%20%40%2072MHz-blue.svg)]()
-[![ESP32](https://img.shields.io/badge/ESP32-Xtensa%20LX6%20%40%20240MHz-red.svg)]()
+[![ESP32-S3](https://img.shields.io/badge/ESP32--S3-Xtensa%20LX7%20%40%20240MHz-red.svg)]()
 [![IDF](https://img.shields.io/badge/ESP--IDF-v6.x-brightgreen.svg)]()
-[![Tests](https://img.shields.io/badge/Tests-110%20passed-brightgreen.svg)]()
+[![Tests](https://img.shields.io/badge/Tests-132%20passed-brightgreen.svg)]()
 [![License](https://img.shields.io/badge/License-MIT-green.svg)]()
 
 Hệ thống robot tự hành AGV hai bánh vi sai (Two-Wheel Differential Drive Mobile Robot) chuyên dụng cho bám vạch kẻ sàn (Line Tracking) trong nhà kho thông minh và sa bàn mô phỏng công nghiệp.
 
-Dự án áp dụng mô hình **Kiến trúc Phân tầng 2 Vi điều khiển (2-Tier Dual-MCU Architecture)**, phân định ranh giới chặt chẽ giữa **Tầng Điều Phối Cấp Cao (High-Level Brain - ESP32)** và **Tầng Chấp Hành Thời Gian Thực Cứng (Hard Real-Time Motion Controller - STM32F103)** qua đường truyền UART nhị phân có mã kiểm tra toàn vẹn CRC16-CCITT.
+Dự án áp dụng mô hình **Kiến trúc Phân tầng 2 Vi điều khiển (2-Tier Dual-MCU Architecture)**, phân định ranh giới chặt chẽ giữa **Tầng Điều Phối Cấp Cao (High-Level Brain - Freenove ESP32-S3 CAM)** và **Tầng Chấp Hành Thời Gian Thực Cứng (Hard Real-Time Motion Controller - STM32F103)** qua đường truyền UART nhị phân có mã kiểm tra toàn vẹn CRC16-CCITT.
 
 ---
 
@@ -19,18 +19,23 @@ Dự án áp dụng mô hình **Kiến trúc Phân tầng 2 Vi điều khiển (
 ┌─────────────────────────────────────────────────────────────┐
 │    NGƯỜI DÙNG / CLIENT TRÊN MÁY TÍNH & ĐIỆN THOẠI           │
 │    (Python Bleak CLI Client / Mobile Web UI / App)          │
+│    Các tính năng: REPL CLI, Step Test, Monitor IR, Calib    │
 └──────────────────────────────┬──────────────────────────────┘
-                               │ Bluetooth Low Energy (BLE NUS)
+                               │ Bluetooth Low Energy (BLE NUS MTU >= 256)
 ┌──────────────────────────────▼──────────────────────────────┐
-│ [ESP32] - BỘ NÃO ĐIỀU PHỐI CẤP CAO (High-Level Master)      │
-│ - Môi trường: ESP-IDF v6.x (FreeRTOS, NimBLE NUS)           │
-│ - Gateway không dây BLE tiếp nhận lệnh và trả về kết quả    │
-│ - Quản lý máy trạng thái lộ trình (FSM Route Planner)       │
+│ [ESP32-S3] - BỘ NÃO ĐIỀU PHỐI CẤP CAO (High-Level Master)   │
+│ - Kit: Freenove ESP32-S3 WROOM CAM (ESP32-S3R8 Octal PSRAM) │
+│ - Môi trường: ESP-IDF v6.x (v6.0.2, FreeRTOS, NimBLE NUS)   │
+│ - Chân UART: GPIO42 (TX) & GPIO41 (RX) cách ly bus Camera   │
+│ - Cổng nạp/debug: Cổng USB Type-C "UART" onboard            │
 │ - Dịch lệnh text BLE sang khung truyền nhị phân chuẩn       │
 │ - Thu thập và chuyển tiếp log debug từ STM32 lên máy tính   │
+│ - Sẵn sàng tài nguyên cho Camera OV2640 & SD card tương lai │
 └──────────────────────────────┬──────────────────────────────┘
-                               │ UART2 <-> USART1 (115200 8N1 DMA Circular)
+                               │ UART1 <-> USART1 (115200 8N1 DMA Circular)
                                │ Khung truyền nhị phân có CRC16-CCITT
+                               │ ESP32 GPIO42 (TX) <-> STM32 PA10 (RX)
+                               │ ESP32 GPIO41 (RX) <-> STM32 PA9 (TX)
 ┌──────────────────────────────▼──────────────────────────────┐
 │ [STM32] - BỘ ĐIỀU KHIỂN CHẤP HÀNH (Hard Real-Time Slave)    │
 │ - Vi điều khiển: STM32F103C8T6 (ARM Cortex-M3 @ 72MHz)      │
@@ -144,15 +149,18 @@ py -3 -m unittest discover tests
 ./flash.sh
 ```
 
-### 2. Module ESP32 (`agv_esp32`)
-Yêu cầu: ESP-IDF v6.x
+### 2. Module ESP32-S3 Gateway (`agv_esp32`)
+Yêu cầu: ESP-IDF v6.x (v6.0.2)
 ```bash
 cd agv_esp32
+
+# Cấu hình target sang ESP32-S3 (lần đầu)
+idf.py set-target esp32s3
 
 # Biên dịch firmware
 idf.py build
 
-# Nạp firmware vào ESP32 và mở log monitor
+# Nạp firmware vào Freenove ESP32-S3 CAM qua cổng Type-C "UART" và mở log monitor
 idf.py -p COMx flash monitor
 ```
 

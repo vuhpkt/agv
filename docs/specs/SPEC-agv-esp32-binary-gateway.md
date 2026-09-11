@@ -1,11 +1,11 @@
-# Spec: AGV ESP32 Binary UART Gateway & Wireless BLE Bench-Test Client
+# Spec: AGV ESP32-S3 (Freenove CAM) Binary UART Gateway & Wireless BLE Bench-Test Client
 
 ## Phase 0: Capability Map
 
 | Module ID | Responsibility | Depends On |
 |---|---|---|
 | `comms-protocol` | Mã nguồn C thuần giao thức nhị phân (`comms_protocol.c/.h`): CRC16-CCITT, byte-stream parser FSM, pack/unpack frame. | — |
-| `uart-service` | Driver UART2 (GPIO16/17, 115200 8N1), FreeRTOS RX Task phân tích khung truyền nhị phân, bộ đệm gửi TX, callback dispatch frame cho ứng dụng. | `comms-protocol` |
+| `uart-service` | Driver UART1 (GPIO42 TX / GPIO41 RX, 115200 8N1), FreeRTOS RX Task phân tích khung truyền nhị phân, bộ đệm gửi TX, callback dispatch frame cho ứng dụng. | `comms-protocol` |
 | `ble-command-bridge` | Module `ble_cmd_dispatcher`: Biên dịch chuỗi text từ BLE NUS sang binary frame cho STM32; format phản hồi từ STM32 (ACK, PONG, LOG, STATUS, ENC) thành text gửi lại BLE NUS; hỗ trợ MTU trao đổi dữ liệu tốc độ cao. | `uart-service`, `ble_nus` |
 | `tools-ble-client` | Bộ công cụ Python tương tác trên PC (`agv_esp32/tools/agv_ble_controller.py`) dùng thư viện `bleak`: kết nối BLE, giao diện REPL, thu thập và hiển thị đồ thị Step Response, vẽ thanh đo 5 mắt IR trực quan (`monitor_ir`), và quét hiệu chuẩn quang học bàn test (`calibrate_line`). | `ble-command-bridge` |
 
@@ -15,7 +15,7 @@
 
 ## 1. Objective (Mục Tiêu)
 
-Xây dựng tầng firmware truyền thông nhị phân trên **ESP32 (ESP-IDF v6.x / v6.0.2)** để kết nối đồng bộ với vi điều khiển chấp hành **STM32F103C8T6** theo chuẩn giao thức nhị phân `comms_protocol` (ADR-003), đồng thời cung cấp giao diện điều khiển và chẩn đoán toàn diện qua **Bluetooth Low Energy (NimBLE Nordic UART Service - NUS)**.
+Xây dựng tầng firmware truyền thông nhị phân trên **Freenove ESP32-S3 CAM (ESP-IDF v6.x / v6.0.2, target esp32s3)** để kết nối đồng bộ với vi điều khiển chấp hành **STM32F103C8T6** theo chuẩn giao thức nhị phân `comms_protocol` (ADR-003), đồng thời cung cấp giao diện điều khiển và chẩn đoán toàn diện qua **Bluetooth Low Energy (NimBLE Nordic UART Service - NUS)**. Nền tảng phần cứng ESP32-S3 chuẩn bị sẵn sàng cho việc tích hợp camera thị giác máy tính trong tương lai mà không xung đột tài nguyên.
 
 Song song đó, cung cấp bộ công cụ Python trên máy tính (`agv_esp32/tools/agv_ble_controller.py`) cho phép kỹ sư vận hành kết nối BLE không dây, thực hiện toàn bộ các bài test chẩn đoán phần cứng và xem kết quả trực quan trên PC thay thế hoàn toàn cáp nạp ST-Link / SEGGER RTT:
 - **Kiểm tra kết nối & Đọc cảm biến**: Ping, Đọc/Reset Encoder 2 bánh.
@@ -55,19 +55,30 @@ Song song đó, cung cấp bộ công cụ Python trên máy tính (`agv_esp32/t
 
 ---
 
-## 2. Tech Stack (Công Nghệ & Môi Trường)
+## 2. Tech Stack & Sơ Đồ Đấu Nối Phần Cứng
 
-- **Vi điều khiển Gateway**: ESP32 (Dual-Core Xtensa LX6 @ 240MHz, 4MB Flash, 520KB SRAM).
-- **Firmware Framework**: **ESP-IDF v6.x (`v6.0.2`)** (C11, FreeRTOS, NimBLE stack).
-- **Giao tiếp phần cứng**:
-  - **UART2**: TX = `GPIO17`, RX = `GPIO16`, Baudrate = `115200 bps`, `8N1`, No flow control.
-  - **BOOT Button**: `GPIO0` (Active-LOW, pull-up nội, debounce phần mềm 50ms).
-  - **BLE Stack**: NimBLE với profile Nordic UART Service (NUS):
-    - Service UUID: `6E400001-B5A3-F393-E0A9-E50E24DCCA9E`
-    - RX Characteristic (Write without response / Write): `6E400002-B5A3-F393-E0A9-E50E24DCCA9E`
-    - TX Characteristic (Notify): `6E400003-B5A3-F393-E0A9-E50E24DCCA9E`
-    - Device Name: `AGV_ESP32`
-    - **MTU Negotiation**: Hỗ trợ mở rộng MTU lên tới 256 bytes để truyền tải trọn vẹn các dòng telemetry `DATA:LINE,...` mà không bị ngắt vụn gói.
+- **Vi điều khiển Gateway**: **Freenove ESP32-S3 WROOM CAM** (ESP32-S3R8, Xtensa LX7 dual-core @ 240MHz, 8MB Octal PSRAM, 8MB/16MB SPI Flash).
+- **Firmware Framework**: **ESP-IDF v6.x (`v6.0.2`)**, Target: `esp32s3` (C11, FreeRTOS, NimBLE stack).
+- **Cổng Nạp & Console Log**: Cổng USB Type-C nhãn **UART** (qua chip USB-Serial onboard nối vào UART0 GPIO43/44).
+- **Bảng Phân Bổ Chân Phần Cứng (Pinout)**:
+
+| Tín Hiệu / Chức Năng | Chân ESP32-S3 | Chân STM32F103 | Ghi Chú Kỹ Thuật |
+| :--- | :---: | :---: | :--- |
+| **UART TX (ESP32 ➔ STM32)** | **GPIO 42** | **PA10 (RX)** | UART1 TX, Non-strapping pin, an toàn tuyệt đối. |
+| **UART RX (ESP32 🠄 STM32)** | **GPIO 41** | **PA9 (TX)** | UART1 RX, Pull-up nội, độc lập với bus Camera. |
+| **GND** | **GND** | **GND** | Nối chung mass giữa 2 bo mạch. |
+| **Nút Nhấn BOOT** | **GPIO 0** | — | Nút cứng BOOT trên board (Active-LOW), ấn để gửi PING. |
+| *Bảo lưu: Camera OV2640* | GPIO 4–18 | — | Bus DVP camera (XCLK, PCLK, VSYNC, HREF, SIOD, SIOC, Y2-Y9). |
+| *Bảo lưu: Octal PSRAM* | GPIO 35–37 | — | Dành riêng cho 8MB OPI PSRAM tích hợp. |
+| *Bảo lưu: Thẻ nhớ MicroSD* | GPIO 38–40 | — | Giao tiếp 1-bit SDMMC (CMD, CLK, DATA0). |
+| *Bảo lưu: Đèn LED Onboard* | GPIO 2, 48 | — | GPIO 2 (LED xanh báo nguồn), GPIO 48 (WS2812 RGB LED). |
+
+- **BLE Stack**: NimBLE với profile Nordic UART Service (NUS):
+  - Service UUID: `6E400001-B5A3-F393-E0A9-E50E24DCCA9E`
+  - RX Characteristic (Write without response / Write): `6E400002-B5A3-F393-E0A9-E50E24DCCA9E`
+  - TX Characteristic (Notify): `6E400003-B5A3-F393-E0A9-E50E24DCCA9E`
+  - Device Name: `AGV_ESP32`
+  - **MTU Negotiation**: Hỗ trợ mở rộng MTU lên tới 256 bytes để truyền tải trọn vẹn các dòng telemetry `DATA:LINE,...` mà không bị ngắt vụn gói.
 - **PC Test Client**:
   - Python 3.10+ (chạy trên Windows/Linux/macOS).
   - Thư viện: `bleak >= 0.21.0`, `asyncio`, `matplotlib` (tùy chọn vẽ đồ thị bước nhảy).
@@ -80,16 +91,16 @@ Song song đó, cung cấp bộ công cụ Python trên máy tính (`agv_esp32/t
 ```powershell
 cd agv_esp32
 
-# Cấu hình target (nếu thiết lập mới)
-idf.py set-target esp32
+# Cấu hình target sang ESP32-S3 (nếu thiết lập mới)
+idf.py set-target esp32s3
 
 # Biên dịch firmware
 idf.py build
 
-# Nạp firmware vào bo mạch ESP32
+# Nạp firmware vào bo mạch Freenove ESP32-S3 CAM qua cổng Type-C "UART"
 idf.py -p COMx flash
 
-# Mở Serial Monitor để quan sát log UART gốc của ESP32
+# Mở Serial Monitor để quan sát log console
 idf.py -p COMx monitor
 
 # Tổ hợp nạp và mở monitor một bước

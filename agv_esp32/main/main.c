@@ -8,9 +8,9 @@
 #include "comms_protocol.h"
 #include "ble_cmd_dispatcher.h"
 
-#define AGV_UART_PORT        UART_NUM_2
-#define AGV_PIN_UART_TX      GPIO_NUM_17
-#define AGV_PIN_UART_RX      GPIO_NUM_16
+#define AGV_UART_PORT        UART_NUM_1
+#define AGV_PIN_UART_TX      GPIO_NUM_42
+#define AGV_PIN_UART_RX      GPIO_NUM_41
 #define AGV_UART_BAUDRATE    115200
 
 #define AGV_PIN_BOOT_BTN     GPIO_NUM_0
@@ -19,7 +19,7 @@ static const char *TAG = "MAIN";
 
 static void on_boot_button_pressed(void *user_data) {
     (void)user_data;
-    ESP_LOGI(TAG, "BOOT button pressed -> Sending 'AGV_MSG_PING' over UART2...");
+    ESP_LOGI(TAG, "BOOT button pressed -> Sending 'AGV_MSG_PING' over UART1...");
     uart_service_send_msg(AGV_MSG_PING, NULL, 0);
     if (ble_nus_is_connected()) {
         ble_nus_send_str("[BOOT BTN] PING sent to STM32\r\n");
@@ -72,5 +72,5 @@ void app_main(void) {
     };
     ESP_ERROR_CHECK(button_init(&btn_cfg));
 
-    ESP_LOGI(TAG, "AGV System initialized with Binary UART2 & BLE NUS. Ready.");
+    ESP_LOGI(TAG, "AGV System initialized with Binary UART1 & BLE NUS. Ready.");
 }
