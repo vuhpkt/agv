@@ -5,6 +5,7 @@
 #include "nimble/nimble_port.h"
 #include "nimble/nimble_port_freertos.h"
 #include "host/ble_hs.h"
+#include "host/ble_att.h"
 #include "host/util/util.h"
 #include "services/gap/ble_svc_gap.h"
 #include "services/gatt/ble_svc_gatt.h"
@@ -259,6 +260,11 @@ esp_err_t ble_nus_init(const ble_nus_config_t *config) {
     if (ret != ESP_OK) {
         ESP_LOGE(TAG, "Failed to initialize nimble port: %s", esp_err_to_name(ret));
         return ret;
+    }
+
+    int mtu_rc = ble_att_set_preferred_mtu(256);
+    if (mtu_rc != 0) {
+        ESP_LOGW(TAG, "Failed to set preferred MTU to 256: rc=%d", mtu_rc);
     }
 
     ble_svc_gap_init();

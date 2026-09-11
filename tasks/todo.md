@@ -5,11 +5,11 @@
 ### Task 1: Thiết Lập & Kiểm Tra Component `comms_protocol` Trong `agv_esp32`
 **Description:** Đảm bảo component `components/comms_protocol` được đăng ký đúng chuẩn CMake của ESP-IDF v6.x, cung cấp đầy đủ các struct packed, enum mã lệnh và hàm pack/parse C thuần dùng chung với STM32.
 **Acceptance criteria:**
-- [ ] File `components/comms_protocol/CMakeLists.txt` đăng ký thư viện với thư mục `include/` và mã nguồn `comms_protocol.c`.
-- [ ] Component không phụ thuộc bất kỳ thư viện HAL vi điều khiển nào (Zero-HAL, pure C).
-- [ ] Có thể `#include "comms_protocol.h"` từ bất kỳ component nào trong `agv_esp32`.
+- [x] File `components/comms_protocol/CMakeLists.txt` đăng ký thư viện với thư mục `include/` và mã nguồn `comms_protocol.c`.
+- [x] Component không phụ thuộc bất kỳ thư viện HAL vi điều khiển nào (Zero-HAL, pure C).
+- [x] Có thể `#include "comms_protocol.h"` từ bất kỳ component nào trong `agv_esp32`.
 **Verification:**
-- [ ] Build succeeds: `idf.py reconfigure` nhận diện thành công component `comms_protocol`.
+- [x] Build succeeds: `idf.py reconfigure` nhận diện thành công component `comms_protocol`.
 **Dependencies:** None
 **Files touched:**
 - `agv_esp32/components/comms_protocol/CMakeLists.txt`
@@ -22,12 +22,12 @@
 ### Task 2: Tái Cấu Trúc `uart_service` Thành Bộ Thu Phát Khung Truyền Nhị Phân Zero-Malloc
 **Description:** Loại bỏ cơ chế phát hiện pattern chuỗi ký tự ASCII (`\r\n`) trong `uart_service`. Thay thế bằng FreeRTOS Task `uart_rx_task` đọc luồng byte từ UART2 (`GPIO16/17` @ 115200) và nạp vào máy trạng thái `agv_parser_feed_byte()`. Bổ sung API gửi frame nhị phân `uart_service_send_frame()`, `uart_service_send_msg()` và cơ chế đăng ký callback `uart_service_register_frame_cb()`.
 **Acceptance criteria:**
-- [ ] Header `uart_service.h` định nghĩa kiểu callback `agv_frame_rx_cb_t` và cấu trúc cấu hình `uart_service_config_t`.
-- [ ] `uart_rx_task` cấp phát tĩnh toàn bộ buffer giải mã, tuyệt đối không gọi `malloc`/`free` trong luồng nhận byte.
-- [ ] Khi FSM phát hiện frame hoàn chỉnh hợp lệ CRC16, gọi callback chuyển giao dữ liệu tức thời.
-- [ ] Hàm `uart_service_send_msg()` đóng gói đúng Header `0xAA 0x55`, ID, Length, Payload và CRC16 trước khi gửi qua `uart_write_bytes()`.
+- [x] Header `uart_service.h` định nghĩa kiểu callback `agv_frame_rx_cb_t` và cấu trúc cấu hình `uart_service_config_t`.
+- [x] `uart_rx_task` cấp phát tĩnh toàn bộ buffer giải mã, tuyệt đối không gọi `malloc`/`free` trong luồng nhận byte.
+- [x] Khi FSM phát hiện frame hoàn chỉnh hợp lệ CRC16, gọi callback chuyển giao dữ liệu tức thời.
+- [x] Hàm `uart_service_send_msg()` đóng gói đúng Header `0xAA 0x55`, ID, Length, Payload và CRC16 trước khi gửi qua `uart_write_bytes()`.
 **Verification:**
-- [ ] Build succeeds: `idf.py build` biên dịch component `uart_service` không có cảnh báo hoặc lỗi cú pháp.
+- [x] Build succeeds: `idf.py build` biên dịch component `uart_service` không có cảnh báo hoặc lỗi cú pháp.
 **Dependencies:** Task 1
 **Files touched:**
 - `agv_esp32/components/uart_service/include/uart_service.h`
@@ -38,8 +38,8 @@
 ---
 
 ### Checkpoint 1: Sau Phase 1
-- [ ] `comms_protocol` và `uart_service` biên dịch sạch sẽ trên ESP-IDF v6.x.
-- [ ] Tầng truyền thông nhị phân phần cứng sẵn sàng tiếp nhận và điều phối lệnh.
+- [x] `comms_protocol` và `uart_service` biên dịch sạch sẽ trên ESP-IDF v6.x.
+- [x] Tầng truyền thông nhị phân phần cứng sẵn sàng tiếp nhận và điều phối lệnh.
 
 ---
 
@@ -66,11 +66,11 @@
    - `HELP` $\rightarrow$ In bảng hướng dẫn cú pháp
 2. Chiều Lên (STM32 -> BLE): Nhận frame nhị phân từ callback của `uart_service`, định dạng thành chuỗi ký tự có tiền tố rõ ràng (`[ACK]`, `[RESP]`, `[STM32 LOG]`, `[MISSION]`, `[ENCODER]`, `DATA:...`, `DATA:LINE,...`) và gửi về client qua `ble_nus_send_str()`.
 **Acceptance criteria:**
-- [ ] Phân tích chính xác tất cả 15 lệnh text trên, có kiểm tra lỗi cú pháp và kiểm tra giá trị tham số hợp lệ.
-- [ ] Định dạng đầy đủ các thông điệp phản hồi từ STM32, không làm mất mát ký tự.
-- [ ] Các chuỗi telemetry bắt đầu bằng `DATA:` được truyền nguyên bản để client PC dễ dàng parse regex.
+- [x] Phân tích chính xác tất cả 15 lệnh text trên, có kiểm tra lỗi cú pháp và kiểm tra giá trị tham số hợp lệ.
+- [x] Định dạng đầy đủ các thông điệp phản hồi từ STM32, không làm mất mát ký tự.
+- [x] Các chuỗi telemetry bắt đầu bằng `DATA:` được truyền nguyên bản để client PC dễ dàng parse regex.
 **Verification:**
-- [ ] Build succeeds: `idf.py build` hoàn tất không lỗi.
+- [x] Build succeeds: `idf.py build` hoàn tất không lỗi.
 **Dependencies:** Task 2
 **Files touched:**
 - `agv_esp32/main/ble_cmd_dispatcher.h`
@@ -87,11 +87,11 @@
 - Đăng ký `ble_cmd_dispatcher_handle_frame` làm callback nhận frame của UART Service.
 - Cấu hình nút BOOT (GPIO0): khi ấn nút gửi frame `AGV_MSG_PING` xuống STM32 và in thông báo lên BLE.
 **Acceptance criteria:**
-- [ ] Loại bỏ hoàn toàn các lỗi cú pháp cũ trong `main.c`.
-- [ ] ESP32 khởi động sạch sẽ: NVS flash, NimBLE stack, UART2 driver, BOOT button handler.
-- [ ] Cấu hình MTU 256 bytes hoạt động với client BLE.
+- [x] Loại bỏ hoàn toàn các lỗi cú pháp cũ trong `main.c`.
+- [x] ESP32 khởi động sạch sẽ: NVS flash, NimBLE stack, UART2 driver, BOOT button handler.
+- [x] Cấu hình MTU 256 bytes hoạt động với client BLE.
 **Verification:**
-- [ ] Build succeeds: `idf.py build` hoàn tất 100% không cảnh báo lỗi trên ESP-IDF v6.x (`v6.0.2`).
+- [x] Build succeeds: `idf.py build` hoàn tất 100% không cảnh báo lỗi trên ESP-IDF v6.x (`v6.0.2`).
 **Dependencies:** Task 3
 **Files touched:**
 - `agv_esp32/main/main.c`
@@ -102,8 +102,8 @@
 ---
 
 ### Checkpoint 2: Sau Phase 2
-- [ ] Firmware `agv_esp32` đã sẵn sàng 100% mã nguồn, biên dịch thành công nhị phân `.bin`.
-- [ ] Đầy đủ các kênh BLE NUS <-> Binary UART2 DMA và xử lý nút bấm vật lý.
+- [x] Firmware `agv_esp32` đã sẵn sàng 100% mã nguồn, biên dịch thành công nhị phân `.bin`.
+- [x] Đầy đủ các kênh BLE NUS <-> Binary UART2 DMA và xử lý nút bấm vật lý.
 
 ---
 
