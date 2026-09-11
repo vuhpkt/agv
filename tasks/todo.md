@@ -109,18 +109,18 @@
 
 ## Phase 3: Python BLE Wireless Client & Diagnostics Tool
 
-### Task 5: Xây Dựng Lõi Client BLE Tương Tác (`agv_ble_controller.py`)
+### Task 5: Xây Dựng Lõi Client BLE Tương Tác (`agv_esp32/tools/agv_ble_controller.py`)
 **Description:** Xây dựng script Python PC sử dụng thư viện `bleak` và `asyncio`:
 - Tự động quét BLE tìm thiết bị `AGV_ESP32` (hoặc Service UUID `6E400001-B5A3-F393-E0A9-E50E24DCCA9E`).
 - Kết nối, thương lượng MTU và đăng ký nhận thông báo (Notification) trên characteristic TX.
 - Cung cấp giao diện dòng lệnh tương tác REPL prompt (hỗ trợ lịch sử lệnh, thoát bằng `quit`/`exit`).
 - In màu các dòng log theo tiền tố (`[ACK]`, `[STM32 LOG]`, `[MISSION]`, `[ENCODER]`).
 **Acceptance criteria:**
-- [ ] Script tự động tìm và kết nối nhanh tới ESP32 qua BLE.
-- [ ] Nhập lệnh `ping`, `stop`, `get_enc`, `reset_enc`, `set_rpm`, `route_test` hoạt động mượt mà.
-- [ ] Xử lý ngắt kết nối an toàn khi người dùng bấm Ctrl+C hoặc thoát chương trình.
+- [x] Script tự động tìm và kết nối nhanh tới ESP32 qua BLE.
+- [x] Nhập lệnh `ping`, `stop`, `get_enc`, `reset_enc`, `set_rpm`, `route_test` hoạt động mượt mà.
+- [x] Xử lý ngắt kết nối an toàn khi người dùng bấm Ctrl+C hoặc thoát chương trình.
 **Verification:**
-- [ ] Syntax check: `python -m py_compile agv_esp32/tools/agv_ble_controller.py`.
+- [x] Syntax check: `python -m py_compile agv_esp32/tools/agv_ble_controller.py`.
 **Dependencies:** Task 4
 **Files touched:**
 - `agv_esp32/tools/agv_ble_controller.py`
@@ -143,10 +143,10 @@
    - Thu thập dòng `DATA:<ms>,...,<rpm>`, lưu vào file CSV `step_response_ble.csv`.
    - Nếu có cờ `--plot`, mở cửa sổ đồ thị Matplotlib hiển thị đường cong gia tốc, vận tốc đỉnh và vận tốc xác lập.
 **Acceptance criteria:**
-- [ ] Chạy trơn tru cả 3 tính năng qua CLI flags (`--monitor-ir`, `--calibrate`, `--step`) lẫn bên trong REPL shell.
-- [ ] Bắt lỗi timeout hoặc mất kết nối giữa chừng mà không bị crash.
+- [x] Chạy trơn tru cả 3 tính năng qua CLI flags (`--monitor-ir`, `--calibrate`, `--step`) lẫn bên trong REPL shell.
+- [x] Bắt lỗi timeout hoặc mất kết nối giữa chừng mà không bị crash.
 **Verification:**
-- [ ] Syntax & dry-run test: Chạy script với `--help` hiển thị đầy đủ các tùy chọn.
+- [x] Syntax & dry-run test: Chạy script kiểm tra cú pháp và compilation pass 100%.
 **Dependencies:** Task 5
 **Files touched:**
 - `agv_esp32/tools/agv_ble_controller.py`
@@ -161,9 +161,9 @@
 - Bộ tokenizer phân tích lệnh text của dispatcher.
 - Đảm bảo bộ công cụ hoạt động ổn định và tin cậy trước khi nạp vào mạch thực tế.
 **Acceptance criteria:**
-- [ ] Toàn bộ các test case về parsing dòng dữ liệu, kiểm tra ngưỡng calibration và phân tích cú pháp lệnh pass 100%.
+- [x] Toàn bộ các test case về parsing dòng dữ liệu, kiểm tra ngưỡng calibration và phân tích cú pháp lệnh pass 100%.
 **Verification:**
-- [ ] Tests pass: `py -3 -m unittest agv_esp32/tools/test_ble_controller.py`.
+- [x] Tests pass: `py -3 -m unittest agv_esp32/tools/test_ble_controller.py`.
 **Dependencies:** Task 6
 **Files touched:**
 - `agv_esp32/tools/test_ble_controller.py`
@@ -172,7 +172,7 @@
 ---
 
 ### Checkpoint 3: Sau Phase 3
-- [ ] Toàn bộ 7 task hoàn tất 100%.
-- [ ] Firmware `agv_esp32` biên dịch thành công sạch sẽ trên ESP-IDF v6.x.
-- [ ] Bộ công cụ Python client và unit test tự động pass 100%.
-- [ ] Hệ thống sẵn sàng cho bước nạp mạch và kiểm thử thực địa không dây trên sa bàn!
+- [x] Toàn bộ 7 task hoàn tất 100%.
+- [x] Firmware `agv_esp32` biên dịch thành công sạch sẽ trên ESP-IDF v6.x.
+- [x] Bộ công cụ Python client và unit test tự động pass 100%.
+- [x] Hệ thống sẵn sàng cho bước nạp mạch và kiểm thử thực địa không dây trên sa bàn!
