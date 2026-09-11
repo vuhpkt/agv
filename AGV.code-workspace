@@ -1,0 +1,36 @@
+{
+  "folders": [
+    {
+      "name": "ESP32-S3 Gateway",
+      "path": "agv_esp32"
+    },
+    {
+      "name": "STM32 Motion Controller",
+      "path": "agv_stm32"
+    },
+    {
+      "name": "AGV System (Docs & Root)",
+      "path": "."
+    }
+  ],
+  "settings": {
+    "files.associations": {
+      "*.h": "c",
+      "*.c": "c",
+      "Kconfig*": "kconfig",
+      "sdkconfig*": "kconfig"
+    },
+    "idf.espIdfPathWin": "C:\\esp\\v6.0.2\\esp-idf",
+    "idf.openOcdConfigs": [
+      "board/esp32s3-builtin.cfg"
+    ]
+  },
+  "extensions": {
+    "recommendations": [
+      "espressif.esp-idf-extension",
+      "ms-vscode.cpptools",
+      "twxs.cmake",
+      "ms-vscode.cmake-tools"
+    ]
+  }
+}
