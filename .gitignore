@@ -1,0 +1,44 @@
+# Build outputs & compilers
+build/
+**/build/
+cmake-build-*/
+**/cmake-build-*/
+*.elf
+*.bin
+*.hex
+*.map
+*.o
+*.d
+
+# ESP-IDF specific
+sdkconfig.old
+**/sdkconfig.old
+managed_components/
+dependencies.lock
+
+# Python cache & artifacts
+__pycache__/
+**/__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+*.png
+*.svg
+
+# IDEs & Editor configurations
+.vscode/
+**/.vscode/
+.idea/
+**/.idea/
+*.swp
+*.swo
+*~
+
+# Operating System files
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Git backups
+.git_backups/
+*.git_bak
