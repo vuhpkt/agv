@@ -15,7 +15,7 @@
 
 #define LINE_FOLLOW_LOOP_RATE_MS    10     /**< Chu kỳ điều khiển bám line 10ms (100Hz) */
 #define LINE_CALIB_DURATION_MS      3000   /**< Thời gian tự hiệu chuẩn min/max (3 giây) */
-#define LINE_LOST_TIMEOUT_MS        1000   /**< Thời gian an toàn ngắt motor khi mất vạch liên tục (1 giây) */
+#define LINE_LOST_TIMEOUT_MS        2000   /**< Thời gian an toàn ngắt motor khi mất vạch liên tục (2 giây) */
 #define CROSSLINE_DEBOUNCE_MS       400    /**< Thời gian debounce sau khi qua ngã rẽ */
 #define TURN_MIN_DURATION_MS        350    /**< Thời gian quay tối thiểu để thoát khỏi line cũ */
 
@@ -67,6 +67,7 @@ void App_LineFollow_Init(void) {
 void App_LineFollow_Start(float base_rpm) {
     s_base_rpm = (base_rpm > 0.0f) ? base_rpm : 80.0f;
     s_is_route_mode = false;
+    s_tracker.pid_cfg.out_max = (s_base_rpm >= 60.0f) ? s_base_rpm : 60.0f;
     line_tracker_reset(&s_tracker);
     s_lost_start_tick = 0;
     s_crossline_debounce_until = 0;
@@ -87,6 +88,7 @@ bool App_LineFollow_LoadRoute(const uint8_t *actions, uint8_t count, float targe
     s_route_count = count;
     s_route_step = 0;
     s_base_rpm = (target_rpm > 0.0f) ? target_rpm : 80.0f;
+    s_tracker.pid_cfg.out_max = (s_base_rpm >= 60.0f) ? s_base_rpm : 60.0f;
     return true;
 }
 

@@ -20,6 +20,7 @@ static uint32_t s_duration_ms = DIAG_IR_DEFAULT_DURATION_MS;
 static float s_base_rpm = DIAG_IR_DEFAULT_BASE_RPM;
 static uint32_t s_start_tick = 0;
 static uint32_t s_last_sample_tick = 0;
+static uint32_t s_lost_start_tick = 0;
 
 static line_tracker_t s_tracker;
 static Diag_IR_Result_t s_result;
@@ -41,12 +42,13 @@ void Diag_IR_Init(void) {
     s_base_rpm = DIAG_IR_DEFAULT_BASE_RPM;
     s_start_tick = 0;
     s_last_sample_tick = 0;
+    s_lost_start_tick = 0;
 
     line_pid_cfg_t default_pid = {
-        .kp = 0.08f,
-        .ki = 0.005f,
-        .kd = 0.03f,
-        .out_max = 40.0f
+        .kp = 0.15f,
+        .ki = 0.0f,
+        .kd = 0.035f,
+        .out_max = 80.0f
     };
     line_tracker_init(&s_tracker, &default_pid);
 
@@ -69,6 +71,13 @@ void Diag_IR_Start(Diag_IR_Mode_t mode, uint32_t duration_ms, float base_rpm) {
 
     s_start_tick = bsp_time_get_ms();
     s_last_sample_tick = s_start_tick;
+    s_lost_start_tick = 0;
+
+    /* Tự động mở rộng out_max theo tốc độ cơ sở:
+     * Để ôm cua gắt (như 90 RPM), bánh trong cần có khả năng phanh về 0 RPM (90 - 90 = 0).
+     */
+    s_tracker.pid_cfg.out_max = (s_base_rpm >= 60.0f) ? s_base_rpm : 60.0f;
+    line_tracker_reset(&s_tracker);
 
     memset(&s_result, 0, sizeof(s_result));
     s_result.status = DIAG_IR_STATE_RUNNING;
@@ -81,7 +90,8 @@ void Diag_IR_Start(Diag_IR_Mode_t mode, uint32_t duration_ms, float base_rpm) {
     }
 
     s_running = true;
-    AGV_LOG("[DIAG_IR_START] %s dur=%u ms rpm=%.1f", get_mode_name(mode), (unsigned)s_duration_ms, s_base_rpm);
+    AGV_LOG("[DIAG_IR_START] %s dur=%u ms rpm=%.1f out_max=%.1f",
+            get_mode_name(mode), (unsigned)s_duration_ms, s_base_rpm, s_tracker.pid_cfg.out_max);
 }
 
 void Diag_IR_StartDefault(void) {
@@ -94,6 +104,7 @@ void Diag_IR_Stop(void) {
     }
 
     s_running = false;
+    s_lost_start_tick = 0;
     s_result.status = DIAG_IR_STATE_IDLE;
 
     if (s_mode == DIAG_IR_MODE_TRACK) {
@@ -145,10 +156,34 @@ void Diag_IR_Process(void) {
     if (s_tracker.is_crossline) s_result.crossline_detected = true;
 
     if (s_mode == DIAG_IR_MODE_TRACK) {
-        float delta_v = line_tracker_compute_pid(&s_tracker, err, 0.01f);
-        float v_l = s_base_rpm + delta_v;
-        float v_r = s_base_rpm - delta_v;
-        App_MotorControl_SetTargetRPM(v_l, v_r);
+        if (s_tracker.line_lost) {
+            if (s_lost_start_tick == 0) {
+                s_lost_start_tick = now;
+            } else if ((uint32_t)(now - s_lost_start_tick) >= DIAG_IR_LOST_TIMEOUT_MS) {
+                /* Đã mất vạch quá thời gian an toàn 2.0 giây -> Dừng khẩn cấp */
+                Diag_IR_Stop();
+                s_result.status = DIAG_IR_STATE_FAILED;
+                AGV_LOG("[DIAG_IR_LOST_TIMEOUT] Line lost > %u ms. Emergency stop triggered.",
+                        (unsigned)DIAG_IR_LOST_TIMEOUT_MS);
+                return;
+            }
+
+            /* Khi mất vạch (dưới 2.0s): Giảm tốc còn 60% và bẻ lái theo hướng lệch gần nhất để tìm lại vạch */
+            float search_rpm = s_base_rpm * 0.6f;
+            if (search_rpm < 30.0f) {
+                search_rpm = 30.0f;
+            }
+            float delta_rpm = (s_tracker.last_valid_error > 0) ? (search_rpm * 0.8f) : -(search_rpm * 0.8f);
+            float v_l = search_rpm + delta_rpm;
+            float v_r = search_rpm - delta_rpm;
+            App_MotorControl_SetTargetRPM(v_l, v_r);
+        } else {
+            s_lost_start_tick = 0;
+            float delta_v = line_tracker_compute_pid(&s_tracker, err, 0.01f);
+            float v_l = s_base_rpm + delta_v;
+            float v_r = s_base_rpm - delta_v;
+            App_MotorControl_SetTargetRPM(v_l, v_r);
+        }
     }
 
     uint32_t elapsed_ms = now - s_start_tick;

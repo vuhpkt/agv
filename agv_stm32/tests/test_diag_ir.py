@@ -83,6 +83,29 @@ class TestDiagIR(unittest.TestCase):
         any_failed = any((max_raw_bad[i] - min_raw[i]) < min_dynamic_range for i in range(5))
         self.assertTrue(any_failed)
 
+    def test_diag_ir_lost_timeout_definition(self):
+        """diag_ir.h must define DIAG_IR_LOST_TIMEOUT_MS as 2000 (2.0s)"""
+        import re
+        header_path = os.path.join(REPO_ROOT, "Diagnostics", "Inc", "diag_ir.h")
+        with open(header_path, "r", encoding="utf-8") as f:
+            content = f.read()
+        self.assertIn("DIAG_IR_LOST_TIMEOUT_MS", content)
+        match = re.search(r"#define\s+DIAG_IR_LOST_TIMEOUT_MS\s+(\d+)", content)
+        self.assertIsNotNone(match)
+        timeout_ms = int(match.group(1))
+        self.assertEqual(timeout_ms, 2000, "DIAG_IR_LOST_TIMEOUT_MS must be 2000ms (2.0s)")
+
+    def test_diag_ir_lost_line_safety_and_pid_tuning(self):
+        """diag_ir.c must track lost timeout, zero out Ki to avoid hunting, and adapt out_max"""
+        source_path = os.path.join(REPO_ROOT, "Diagnostics", "Src", "diag_ir.c")
+        with open(source_path, "r", encoding="utf-8") as f:
+            content = f.read()
+
+        self.assertIn("s_lost_start_tick", content, "Must track s_lost_start_tick")
+        self.assertIn("DIAG_IR_LOST_TIMEOUT_MS", content, "Must check DIAG_IR_LOST_TIMEOUT_MS")
+        self.assertIn(".ki = 0.0f", content, "Ki must be 0.0f to prevent hunting oscillations")
+        self.assertIn("s_tracker.pid_cfg.out_max", content, "Must adapt out_max dynamically")
+
 
 if __name__ == "__main__":
     unittest.main()

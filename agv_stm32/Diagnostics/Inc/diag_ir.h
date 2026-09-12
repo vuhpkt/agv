@@ -21,6 +21,7 @@ extern "C" {
 #define DIAG_IR_SAMPLE_RATE_MS         10      /**< Chu kỳ lấy mẫu 10ms (100Hz) */
 #define DIAG_IR_DEFAULT_BASE_RPM       80.0f   /**< Vận tốc cơ sở khi test chạy bám line */
 #define DIAG_IR_MIN_DYNAMIC_RANGE      100     /**< Ngưỡng dải động tối thiểu để coi mắt IR hoạt động */
+#define DIAG_IR_LOST_TIMEOUT_MS        2000    /**< Thời gian ngắt khẩn cấp khi mất line liên tục (2.0 giây) */
 
 /**
  * @brief Chế độ kiểm tra chẩn đoán dò line của mảng IR
