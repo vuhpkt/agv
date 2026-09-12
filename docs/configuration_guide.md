@@ -130,21 +130,25 @@ static const int32_t weights[LINE_TRACKER_NUM_SENSORS] = {1000, 385, 0, -385, -1
 - Khi vạch nằm ngay mắt 2 hoặc 4 ($1.25\text{ cm}$): $e_{line} \approx \pm 385$.
 - Khi vạch nằm ngay mắt 1 hoặc 5 ($3.25\text{ cm}$): $e_{line} \approx \pm 1000$.
 
-#### B. Bộ điều khiển Line PID (`app_line_follow.c`)
+#### B. Bộ điều khiển Line PID (`app_line_follow.c` & `diag_ir.c`)
 ```c
 line_pid_cfg_t pid_cfg = {
-    .kp = 0.08f,       /* Tỉ lệ đánh lái theo sai số tâm e_line */
-    .ki = 0.005f,      /* Tích phân bù lệch tích lũy khi đi đường cong dài */
-    .kd = 0.03f,       /* Vi phân chống vọt lố (damping) khi vào cua gắt */
-    .out_max = 40.0f   /* Giới hạn chênh lệch tốc độ bẻ lái tối đa (+-40 RPM) */
+    .kp = 0.15f,       /* Tỉ lệ đánh lái theo sai số tâm e_line */
+    .ki = 0.0f,        /* Triệt tiêu hoàn toàn để loại bỏ hiện tượng lắc lư hình sin (hunting) */
+    .kd = 0.035f,      /* Vi phân chống vọt lố (damping) dập tắt dao động khi vào cua */
+    .out_max = 60.0f   /* Khởi tạo cơ sở, tự động co giãn theo base_rpm */
 };
 ```
-- **Bán kính cua gắt**: Nếu xe bị văng khỏi vạch ở khúc cua gắt, hãy tăng `out_max` (ví dụ lên `50.0f` hoặc `60.0f`) và tăng nhẹ `kp`.
-- **Hiện tượng xe lắc lư hình sin (Hunting)**: Nếu xe chạy thẳng nhưng thân xe bị lắc qua lắc lại liên tục, hãy giảm `kp` và tăng `kd`.
-- **Thời gian an toàn mất vạch**:
+- **Tự động co giãn thích ứng `out_max = max(60.0f, base_rpm)`**:
+  - Khi xe chạy ở tốc độ cao $v_{base} = 90\text{ RPM}$, `out_max` được mở rộng lên $90.0\text{ RPM}$.
+  - Lượng vi sai tối đa $\Delta v = 90\text{ RPM}$ cho phép bánh phía trong khúc cua giảm về đúng $0\text{ RPM}$ (phanh đứng bánh trong), giúp xe xoay quanh tâm bánh với bán kính $R \approx 65\text{ mm}$ và ôm trọn các khúc cua vuông $90^\circ$ mà không bị văng vạch (understeer).
+- **Hiện tượng xe lắc lư hình sin (Hunting)**: Triệt tiêu hoàn toàn nhờ $K_i = 0.0f$ và $K_d = 0.035f$.
+- **Cơ chế an toàn ngắt khẩn cấp mất vạch 2 giai đoạn**:
   ```c
-  #define LINE_LOST_TIMEOUT_MS  2000  /* Quá 2 giây mất vạch -> Ngắt motor khẩn cấp */
+  #define LINE_LOST_TIMEOUT_MS     2000  /* Quá 2.0 giây mất vạch -> Dừng khẩn cấp (app_line_follow.c) */
+  #define DIAG_IR_LOST_TIMEOUT_MS  2000  /* Quá 2.0 giây mất vạch -> Dừng khẩn cấp (diag_ir.h) */
   ```
+  - Trong thời gian chờ $< 2.0\text{ s}$, xe tự động giảm tốc còn 60% và bẻ lái theo hướng lệch gần nhất (`last_valid_error`) để tìm lại vạch. Quá 2.0s tự ngắt động cơ khẩn cấp.
 
 ---
 

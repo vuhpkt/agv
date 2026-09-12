@@ -146,11 +146,55 @@ Khi thay đổi điện áp nguồn cấp động cơ $V_m$ (ví dụ: chuyển 
 | :--- | :---: | :---: | :--- | :--- |
 | **`CPR`** | `1320` | Xung/Vòng | `bsp_encoder.c` | Số xung 4X trên 1 vòng quay bánh xe. |
 | **`alpha`** | `0.85` | - | `motor_pi.h` | Hệ số lọc LPF. Tăng nếu tín hiệu vận tốc rung lắc, giảm nếu phản hồi bị trễ. |
-| **`kp`** | `5.04` | PWM/RPM | `motor_pi.h` | Hệ số tỉ lệ. Tăng để xe bám tốc độ cứng hơn; giảm nếu thấy bánh xe bị rung giật. |
-| **`ki`** | `112.3` | PWM/(RPM·s) | `motor_pi.h` | Hệ số tích phân. Triệt tiêu sai số xác lập khi xe leo dốc hoặc chở nặng. |
+| **`kp` (Motor PI)** | `5.04` | PWM/RPM | `motor_pi.h` | Hệ số tỉ lệ động cơ. Tăng để xe bám tốc độ cứng hơn; giảm nếu thấy bánh rung giật. |
+| **`ki` (Motor PI)** | `112.3` | PWM/(RPM·s) | `motor_pi.h` | Hệ số tích phân động cơ. Triệt tiêu sai số xác lập khi xe leo dốc hoặc chở nặng. |
 | **`k_ff`** | `3.705` | PWM/RPM | `motor_pi.h` | Hệ số bù tiến định ($1/K$). Đặt bằng $1000 / \text{RPM}_{\text{max}}$. |
 | **`deadzone`** | `40.0` | PWM | `motor_pi.h` | Bù ma sát khởi động (4% PWM). |
 | **`max_accel`**| `600.0` | RPM/s | `motor_pi.h` | Gia tốc dốc tối đa. Giúp xe tăng/giảm tốc êm ái, không sụt áp pin. |
 | **`base_rpm`** | `80.0` | RPM | `app_config.h` | Tốc độ cơ sở khi tự hành bám line. |
-| **`out_max` (Line PID)** | `60.0` | RPM | `app_line_follow.c` | Giới hạn chênh lệch tốc độ bẻ lái khi cua gắt. |
+| **`kp` (Line PID)**| `0.15` | RPM/Error | `app_line_follow.c` | Hệ số tỉ lệ bẻ lái bám vạch. |
+| **`ki` (Line PID)**| `0.0` | RPM/(Error·s) | `app_line_follow.c` | **Triệt tiêu hoàn toàn** để loại bỏ hiện tượng lắc lư hình sin (hunting). |
+| **`kd` (Line PID)**| `0.035` | RPM·s/Error | `app_line_follow.c` | Hệ số vi sai giảm chấn (damping), dập tắt dao động khi đổi góc cua. |
+| **`out_max` (Line PID)** | `max(60.0, base)` | RPM | `app_line_follow.c` | Giới hạn vi sai bẻ lái, cho phép bánh trong phanh về 0 RPM khi ôm cua gắt. |
+| **`LINE_LOST_TIMEOUT_MS`** | `2000` | ms | `app_line_follow.c` | Thời gian tự ngắt khẩn cấp khi mất vạch liên tục (2.0 giây). |
+
+---
+
+## 6. Động Học Bám Line & Tự Động Nhận Dạng (Step Response Auto-Tuning)
+
+### 6.1. Động học Bẻ cua Vi sai & Bán kính Quay vòng Tối thiểu
+Với khoảng cách giữa hai tâm bánh xe (track width) $W \approx 130\text{ mm}$, quan hệ giữa vận tốc hai bánh và bán kính quay vòng $R$ tại tâm trục xe là:
+
+$$R = \frac{W}{2} \cdot \frac{v_{ngoài} + v_{trong}}{v_{ngoài} - v_{trong}} = \frac{W}{2} \cdot \frac{2 v_{base}}{2 \Delta v} = \frac{W}{2} \cdot \frac{v_{base}}{\Delta v}$$
+
+- **Trường hợp $\Delta v < v_{base}$ (Thiếu lái / Understeer)**:
+  Nếu giới hạn vi sai $\Delta v$ bị kẹp ở mức thấp (ví dụ $\text{out\_max} = 40\text{ RPM}$ khi $v_{base} = 90\text{ RPM}$):
+  $$v_{trong} = 90 - 40 = 50\text{ RPM} \implies R_{min} = \frac{130}{2} \cdot \frac{180}{80} \approx 146.25\text{ mm}$$
+  Xe không thể bẻ đủ góc cho các khúc cua vuông $90^\circ$ có bán kính nhỏ ($R \le 100\text{ mm}$) và sẽ bị văng khỏi vạch.
+- **Trường hợp $\Delta v = v_{base}$ (Quay quanh bánh trong / Pivot Turn)**:
+  Nhờ cơ chế co giãn thích ứng $\text{out\_max} = \max(60.0f, v_{base})$, tại $v_{base} = 90\text{ RPM} \implies \text{out\_max} = 90\text{ RPM}$:
+  $$v_{trong} = 90 - 90 = 0\text{ RPM} \implies R_{min} = \frac{W}{2} \approx 65\text{ mm}$$
+  Bánh trong dừng hẳn làm điểm tựa, xe quay quanh tâm bánh trong và ôm trọn góc cua gắt.
+
+### 6.2. Tại sao Khâu Tích phân $K_i$ Bằng 0 Trong Điều Khiển Line PID?
+Trong bài toán bám line xe hai bánh vi sai, biến điều khiển là sai số vị trí tâm vạch $e_{line} \in [-1000, +1000]$ với Setpoint luôn là $0$.
+- Nếu có $K_i > 0$, trong quá trình xe điều chỉnh từ mép vạch về tâm vạch, tích phân sai số tích lũy một lượng $\int e\, dt \ne 0$.
+- Khi tâm xe vừa chạm vào vạch ($e = 0$), lượng bù tích phân này vẫn còn duy trì điện áp bẻ lái, ép xe tiếp tục vượt quá tâm sang phía đối diện.
+- Hiện tượng này lặp đi lặp lại tạo thành **chu kỳ dao động con lắc (hunting oscillation)** quanh vạch với biên độ nhỏ.
+- **Giải pháp chuẩn xác**: Đặt $K_i = 0.0f$, tăng $K_p = 0.15f$ và dùng khâu vi sai $K_d = 0.035f$ để làm tắt dần quán tính.
+
+### 6.3. Thuật toán Step Response Auto-Tuner Trên BLE GUI Dashboard
+Công cụ [`agv_esp32/tools/agv_ble_gui.py`](../agv_esp32/tools/agv_ble_gui.py) tích hợp thuật toán nhận dạng đáp ứng bước nhảy tự động:
+1. Kích xung PWM $U_{step}$ và thu thập dữ liệu vận tốc phản hồi $\Omega(t)$.
+2. Xác định vận tốc xác lập $\Omega_{ss}$, tính hệ số khuếch đại tĩnh quy đổi về 100% công suất:
+   $$K = \frac{\Omega_{ss}}{U_{step}}, \quad \text{RPM}_{\max} = K \times 1000$$
+3. Tìm thời điểm $t_{63.2\%}$ để xác định hằng số thời gian $\tau$.
+4. Tự động tính toán bộ thông số tối ưu:
+   - Feedforward Gain: $K_{ff} = \frac{1000}{\text{RPM}_{\max}}$
+   - Proportional Gain: $K_p = \frac{\tau}{K \cdot \tau_{cl}}$ (với thời gian đáp ứng vòng kín mục tiêu $\tau_{cl} = 30\text{ ms}$)
+   - Integral Gain: $K_i = \frac{K_p}{\tau}$
+5. Đề xuất vận tốc bám line an toàn (Safe Line Speed):
+   $$v_{safe} = (60\% \sim 70\%) \times \text{RPM}_{\max}$$
+   Đảm bảo luôn có từ 30% đến 40% dự phòng công suất (Headroom) cho bánh ngoài cua khi cần tăng tốc bẻ góc.
+
 

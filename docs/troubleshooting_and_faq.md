@@ -81,6 +81,23 @@ Dành cho người mới bắt đầu hoặc sau thời gian dài không chạm 
   - Tính lại hệ số $K_{ff} = \frac{1}{\text{RPM}_{\max}}$, $K_p = \frac{\tau}{K \cdot \tau_{cl}}$.
   - Mở [`docs/control_theory.md`](control_theory.md) để tra bảng công thức pole-placement.
 
+### 2.4. Tự động nhận dạng thông số động cơ bằng Step Response Auto-Tuner (BLE Dashboard)
+* **Triệu chứng**: Sau khi thay đổi động cơ, hộp số, hoặc nguồn pin (ví dụ từ 5V sang LiPo 7.4V/11.1V), chưa biết đặt $K_p, K_i, K_{ff}$ và tốc độ bám line bao nhiêu.
+* **Cách thực hiện 1-click**:
+  1. Chạy Dashboard đồ họa BLE:
+     ```bash
+     py agv_esp32/tools/agv_ble_gui.py
+     ```
+  2. Bấm nút **Scan & Connect** để kết nối xe qua Bluetooth.
+  3. Chọn tab **Motor PI Step Test**:
+     - Chọn kênh test (Motor Left hoặc Right), thời gian test 1500ms, PWM 800 (hoặc 600 - 1000).
+     - Bấm **Run Step Test**.
+     - Đồ thị sẽ hiển thị phản hồi vận tốc theo thời gian thực.
+  4. Bấm **Analyze & Auto-Tune**:
+     - Thuật toán tự động tìm $\Omega_{ss}, \tau, t_r$, tự động tính toán $K_p, K_i, K_{ff}$ và tốc độ bám line an toàn (có dự phòng 30-40% headroom).
+     - Bấm **Apply Live via BLE** để nạp ngay vào RAM STM32 kiểm tra trực tiếp mà không cần nạp lại code.
+     - Hoặc bấm **Export C Header** để xuất ra file `motor_pi_defaults.h`.
+
 ---
 
 ## 👁️ 3. Sự cố Mảng Cảm biến 5 Mắt IR (Optical Line Sensor)
@@ -114,6 +131,27 @@ Dành cho người mới bắt đầu hoặc sau thời gian dài không chạm 
      ```
   3. Lia xe qua lại ngang vạch trong 5 giây. Script sẽ in bảng Min/Max và hỏi có lưu vào [`Application/Inc/app_line_calib_defaults.h`](file:///d:/Workspace/Projects/AGV/agv_stm32/Application/Inc/app_line_calib_defaults.h) không.
   4. Chọn `Y` (Yes) rồi biên dịch lại `./build.sh` và nạp `./flash.sh`.
+
+### 3.3. Xe bị rung lắc dao động biên độ nhỏ (Hunting) khi chạy thẳng
+* **Triệu chứng**: Chạy thử ở tốc độ 50 RPM (`LINE_TEST 2 10000 50`), xe bám được line nhưng 2 bánh liên tục giật lắc hình sin qua lại quanh vạch.
+* **Nguyên nhân**: Khâu tích phân $K_i > 0$ trong bộ điều khiển Line PID. Khi xe chớm lệch tâm, $K_i$ tích lũy sai số gây trễ pha. Lúc xe về đúng tâm ($e=0$), lượng tích lũy vẫn còn khiến xe bẻ lái quá trớn sang phía đối diện.
+* **Cách khắc phục**:
+  - Đảm bảo $K_i = 0.0f$ trong Line PID (`app_line_follow.c` và `diag_ir.c`).
+  - Đặt $K_p = 0.15f$, $K_d = 0.035f$ để xe chuyển động thẳng êm ái và dập tắt dao động.
+
+### 3.4. Xe bị văng khỏi vạch ở khúc cua tốc độ cao (ví dụ 90 RPM) và không thể tự quay lại
+* **Nguyên nhân**:
+  1. Giới hạn vi sai bẻ lái $\text{out\_max}$ bị kẹp quá thấp (ví dụ 40 RPM). Ở tốc độ 90 RPM, bánh trong chỉ giảm xuống $90 - 40 = 50\text{ RPM}$ (vẫn quay tiến nhanh), bán kính quay vòng tối thiểu bị giới hạn ở $R \approx 146\text{ mm}$, xe bị thiếu lái (understeer) và không thể ôm khúc cua vuông.
+  2. Khi xe chớm văng khỏi vạch, xe không giảm tốc mà vẫn duy trì 90 RPM lao thẳng về phía trước.
+* **Cách khắc phục**:
+  - Sử dụng cơ chế mở rộng $\text{out\_max} = \max(60.0f, v_{base})$. Ở 90 RPM, $\text{out\_max} = 90\text{ RPM} \implies$ bánh trong có thể phanh về $0\text{ RPM}$, cho phép xe xoay quanh bánh trong ($R \approx 65\text{ mm}$).
+  - Tự động giảm tốc còn 60% và bẻ lái theo hướng lệch gần nhất (`last_valid_error`) trong 2.0s để dò lại vạch.
+
+### 3.5. Khi mất vạch, xe không tự dừng sau 2 giây mà chạy hết thời gian test
+* **Nguyên nhân**: Module chẩn đoán `diag_ir.c` thiếu bộ đếm thời gian an toàn `s_lost_start_tick`.
+* **Đã xử lý trong code**:
+  - Đã định nghĩa `#define DIAG_IR_LOST_TIMEOUT_MS 2000` và `#define LINE_LOST_TIMEOUT_MS 2000`.
+  - Nếu mất vạch liên tục quá 2.0 giây, xe tự động ngắt động cơ khẩn cấp, khóa bánh và phát log cảnh báo `[DIAG_IR_LOST_TIMEOUT]`.
 
 ---
 

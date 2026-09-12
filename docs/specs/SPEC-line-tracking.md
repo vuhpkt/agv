@@ -173,25 +173,35 @@ float line_tracker_compute_pid(line_tracker_t *tracker, int16_t error, float dt_
 ## 6. Mô hình Toán học của Thuật toán (Mathematical Formulation)
 
 ### 6.1. Trọng số Vị trí (Weighted Centroid Formula)
-Gán trọng số tọa độ không gian cho 5 mắt từ trái sang phải:
-$$W = \begin{bmatrix} -1000 & -500 & 0 & +500 & +1000 \end{bmatrix}$$
+Căn cứ theo khoảng cách hình học thực tế của thanh cảm biến ($1.25\text{ cm}$ cho mắt phụ cận và $3.25\text{ cm}$ cho mắt ngoài cùng từ tâm):
+$$W = \begin{bmatrix} +1000 & +385 & 0 & -385 & -1000 \end{bmatrix}$$
+Ánh xạ theo thứ tự 5 kênh ADC: `[CH0(R2), CH1(R1), CH2(MID), CH3(L1), CH4(L2)]`.
 
-Sai số tâm vạch $e_{line}$ được tính bằng mô men trọng số bậc 1 chia cho tổng cường độ phản xạ:
+Sai số tâm vạch $e_{line} \in [-1000, +1000]$ được tính bằng mô men trọng số bậc 1 chia cho tổng cường độ phản xạ:
 
 $$e_{line} = \frac{\sum_{i=0}^{4} W_i \times S_{norm, i}}{\sum_{i=0}^{4} S_{norm, i}}$$
 
 - Nếu $\sum S_{norm, i} < S_{threshold}$ (cả 5 mắt đều không thấy vạch $\rightarrow$ mất vạch):
-  Giữ nguyên $e_{line} = \text{sign}(e_{prev}) \times 1000$ để xe tiếp tục bẻ cua tìm lại vạch.
-- Nếu tối thiểu 4/5 mắt có $S_{norm, i} > 700$: Đánh dấu cờ `is_crossline = true` (phát hiện nút giao/vạch ngang).
+  - Giữ nguyên hướng lệch hợp lệ cuối cùng $e_{line} = \text{sign}(e_{prev}) \times 1000$.
+  - Xe giảm tốc còn 60% tốc độ cơ sở để dò lại vạch.
+  - Kích hoạt timer an toàn: ngắt khẩn cấp động cơ nếu mất vạch liên tục quá 2.0 giây (`LINE_LOST_TIMEOUT_MS = 2000`, `DIAG_IR_LOST_TIMEOUT_MS = 2000`).
+- Nếu tối thiểu 4/5 mắt có $S_{norm, i} > 300$: Đánh dấu cờ `is_crossline = true` (phát hiện nút giao/vạch ngang).
 
-### 6.2. Bộ điều khiển Line PID
-$$\Delta v = K_p \cdot e_{line} + K_i \int e_{line} dt + K_d \frac{e_{line} - e_{prev}}{\Delta t}$$
+### 6.2. Bộ điều khiển Line PID & Phân cực Vi sai
+Để loại bỏ triệt để hiện tượng dao động lắc lư hình sin (hunting), thành phần tích phân được triệt tiêu hoàn toàn ($K_i = 0.0f$):
+$$\Delta v = K_p \cdot e_{line} + K_d \frac{e_{line} - e_{prev}}{\Delta t}$$
+*(Giá trị chuẩn hóa: $K_p = 0.15f, K_i = 0.0f, K_d = 0.035f$)*.
 
-Tốc độ đặt từng bánh xe:
+Giới hạn bẻ lái thích ứng theo tốc độ cơ sở để bánh trong có thể phanh dừng khi cua gắt:
+$$\text{out\_max} = \max(60.0f, v_{base})$$
+
+Tốc độ đặt từng bánh xe (Hồi tiếp âm ổn định):
 $$\begin{cases} 
-\omega_{left} = v_{base} - \Delta v \\ 
-\omega_{right} = v_{base} + \Delta v 
+\omega_{left} = v_{base} + \Delta v \\ 
+\omega_{right} = v_{base} - \Delta v 
 \end{cases}$$
+- Khi $e_{line} > 0$ (vạch bên phải): $\Delta v > 0 \implies \omega_{left} > \omega_{right} \implies$ Xe bẻ lái sang **PHẢI**.
+- Khi $e_{line} < 0$ (vạch bên trái): $\Delta v < 0 \implies \omega_{left} < \omega_{right} \implies$ Xe bẻ lái sang **TRÁI**.
 
 ---
 

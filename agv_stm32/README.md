@@ -151,17 +151,17 @@ Quy trình hiệu chuẩn cảm biến được tối ưu cho bàn làm việc g
 
 ## 🧪 Kiểm thử Tự động (Automated Unit Testing)
 
-Toàn bộ thuật toán điều khiển động cơ, mảng 5 mắt IR, bộ lọc LPF, bộ phân tích lệnh CLI, tính an toàn tràn số, các ranh giới kiến trúc và script hiệu chuẩn được bảo vệ bởi 94 bài test tự động:
+Toàn bộ thuật toán điều khiển động cơ, mảng 5 mắt IR, bộ lọc LPF, bộ phân tích lệnh CLI, tính an toàn tràn số, các ranh giới kiến trúc, ngắt khẩn cấp mất vạch và script hiệu chuẩn được bảo vệ bởi 112 bài test tự động:
 
 ```bash
-# Chạy toàn bộ 94 bài test tự động
+# Chạy toàn bộ 112 bài test tự động
 py -3 -m unittest discover tests
 ```
 *Kết quả mẫu:*
 ```
-..............................................................................................
+................................................................................................................
 ----------------------------------------------------------------------
-Ran 94 tests in 1.369s
+Ran 112 tests in 1.359s
 
 OK
 ```

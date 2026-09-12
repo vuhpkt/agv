@@ -4,7 +4,7 @@
 [![STM32](https://img.shields.io/badge/STM32-STM32F103C8T6%20%40%2072MHz-blue.svg)]()
 [![ESP32-S3](https://img.shields.io/badge/ESP32--S3-Xtensa%20LX7%20%40%20240MHz-red.svg)]()
 [![IDF](https://img.shields.io/badge/ESP--IDF-v6.x-brightgreen.svg)]()
-[![Tests](https://img.shields.io/badge/Tests-140%20passed-brightgreen.svg)]()
+[![Tests](https://img.shields.io/badge/Tests-148%20passed-brightgreen.svg)]()
 [![License](https://img.shields.io/badge/License-MIT-green.svg)]()
 
 Hệ thống robot tự hành AGV hai bánh vi sai (Two-Wheel Differential Drive Mobile Robot) chuyên dụng cho bám vạch kẻ sàn (Line Tracking) trong nhà kho thông minh và sa bàn mô phỏng công nghiệp.
@@ -18,8 +18,8 @@ Dự án áp dụng mô hình **Kiến trúc Phân tầng 2 Vi điều khiển (
 ```
 ┌─────────────────────────────────────────────────────────────┐
 │    NGƯỜI DÙNG / CLIENT TRÊN MÁY TÍNH & ĐIỆN THOẠI           │
-│    (Python Bleak CLI Client / Mobile Web UI / App)          │
-│    Các tính năng: REPL CLI, Step Test, Monitor IR, Calib    │
+│    (Python Bleak CLI Client / BLE GUI Dashboard / Web App)  │
+│    Các tính năng: REPL CLI, Step Test, Auto-Tuner, IR Mon   │
 └──────────────────────────────┬──────────────────────────────┘
                                │ Bluetooth Low Energy (BLE NUS MTU >= 256)
 ┌──────────────────────────────▼──────────────────────────────┐
@@ -42,13 +42,13 @@ Dự án áp dụng mô hình **Kiến trúc Phân tầng 2 Vi điều khiển (
 │ - Kiến trúc 4 tầng Clean Architecture, 100% Static Memory   │
 │ - Đọc ADC1 DMA 5 mắt IR quang học (Chu kỳ 10ms - 100Hz)     │
 │ - Thuật toán tính trọng số tâm vạch Weighted Centroid &     │
-│   Line PID bám line mượt mà                                 │
+│   Line PID bám line mượt mà (Ki=0 triệt tiêu hunting)       │
 │ - Đọc Hardware Timer Encoder 4X (TIM2, TIM3, CPR 1320)      │
 │ - Vòng kín vận tốc động cơ Motor PI 100Hz + bù ma sát       │
 │   Feedforward + chống tràn tích phân Anti-Windup Clamping   │
 │ - Autonomous Route Queue: Tự đếm vạch ngang IR và tự nhảy   │
 │   bước lộ trình mượt mà (không cần dừng chờ hỏi lại ESP32)  │
-│ - Tự ngắt an toàn khi mất vạch liên tục (>1.0 giây)         │
+│ - Tự ngắt an toàn khi mất vạch liên tục (>2.0 giây)         │
 └─────────────────────────────────────────────────────────────┘
 ```
 
@@ -63,20 +63,23 @@ AGV/
 ├── docs/                             # TOÀN BỘ TÀI LIỆU KỸ THUẬT & ĐẶC TẢ DỰ ÁN
 │   ├── specs/                        # Đặc tả kỹ thuật các tính năng (Specifications)
 │   │   ├── SPEC-line-tracking.md     # Đặc tả thuật toán bám line & mảng 5 mắt IR
-│   │   └── SPEC-agv-esp32-binary-gateway.md # Đặc tả cổng Gateway nhị phân ESP32
+│   │   ├── SPEC-agv-esp32-binary-gateway.md # Đặc tả cổng Gateway nhị phân ESP32
+│   │   └── SPEC-agv-ble-gui.md       # Đặc tả giao diện đồ họa Dashboard & Auto-Tuner
 │   ├── decisions/                    # Bản ghi quyết định kiến trúc (Architecture Decision Records)
 │   │   ├── ADR-001-4-tier-clean-architecture.md
 │   │   ├── ADR-002-zero-bloat-bench-diagnostics-and-hardware-scaling.md
-│   │   └── ADR-003-esp32-gateway-binary-protocol-and-rtt-removal.md
+│   │   ├── ADR-003-esp32-gateway-binary-protocol-and-rtt-removal.md
+│   │   ├── ADR-004-esp32s3-freenove-cam-migration-and-pinout.md
+│   │   └── ADR-005-line-tracking-dynamics-geometry-and-safety.md
 │   ├── agv_system_overview_for_esp32.md # Bức tranh tổng thể & thông số vật lý AGV
 │   ├── esp32_uart_protocol_guide.md  # Cẩm nang kết nối phần cứng & từ điển gói tin UART
 │   ├── architecture.md               # Phân tích sâu kiến trúc phần mềm 4 tầng STM32
 │   ├── hardware_and_pinout.md        # Sơ đồ chân MCU, Timer PWM 20kHz, ADC DMA
-│   ├── control_theory.md             # Hàm truyền thực nghiệm G(s), Motor PI & Anti-windup
+│   ├── control_theory.md             # Hàm truyền G(s), Motor PI, Line Dynamics & Auto-Tuner
 │   ├── configuration_guide.md        # Bảng tra cứu thông số cấu hình và căn chỉnh PID
 │   ├── diagnostics_and_bench_testing.md # Hướng dẫn chẩn đoán và test bàn phần cứng
 │   ├── motor_encoder_direction_guide.md # Cẩm nang xác định & đảo chiều motor/encoder
-│   ├── cli_and_telemetry.md          # Giao thức lệnh CLI cũ & script phân tích đo xa
+│   ├── cli_and_telemetry.md          # Giao thức lệnh CLI & script phân tích đo xa
 │   └── troubleshooting_and_faq.md    # Cẩm nang xử lý sự cố & câu hỏi thường gặp (FAQ)
 │
 ├── tasks/                            # KẾ HOẠCH & TIẾN ĐỘ THỰC HIỆN
@@ -91,7 +94,7 @@ AGV/
 │   ├── Services/                     # Thuật toán Pure C (comms_protocol, motor_pi, ...)
 │   ├── Core/                         # Mã khởi tạo vi điều khiển từ STM32CubeMX
 │   ├── scripts/                      # Bộ script Python nhận dạng động cơ và vẽ đồ thị
-│   ├── tests/                        # Bộ kiểm thử tự động (110 bài test, pass 100%)
+│   ├── tests/                        # Bộ kiểm thử tự động (112 bài test, pass 100%)
 │   ├── CMakeLists.txt                # Build configuration (CMake + Ninja)
 │   ├── build.sh / flash.sh           # Script biên dịch và nạp firmware qua ST-Link
 │   └── README.md                     # Tài liệu chi tiết riêng cho module STM32
@@ -105,7 +108,7 @@ AGV/
     ├── main/                         # Ứng dụng chính & bộ điều phối lệnh BLE/UART
     ├── CMakeLists.txt                # Build configuration (ESP-IDF CMake)
     ├── sdkconfig / sdkconfig.defaults# Cấu hình ESP-IDF v6.x
-    └── tools/                        # Công cụ Python tương tác BLE không dây trên PC
+    └── tools/                        # Công cụ Python tương tác BLE không dây & GUI Dashboard
 ```
 
 ---
@@ -118,17 +121,19 @@ AGV/
 | | [esp32_uart_protocol_guide.md](docs/esp32_uart_protocol_guide.md) | Pinout nối dây UART, CRC16-CCITT, cấu trúc từng gói tin nhị phân |
 | **Đặc Tả (Specs)** | [SPEC-agv-esp32-binary-gateway.md](docs/specs/SPEC-agv-esp32-binary-gateway.md) | Đặc tả 4 module: protocol, uart_service, ble_bridge, python client |
 | | [SPEC-line-tracking.md](docs/specs/SPEC-line-tracking.md) | Đặc tả mảng 5 mắt IR ADC DMA, Weighted Centroid, Line PID |
+| | [SPEC-agv-ble-gui.md](docs/specs/SPEC-agv-ble-gui.md) | Đặc tả Dashboard giao diện đồ họa BLE & Bộ nhận dạng Auto-Tuner |
 | **Quyết Định (ADRs)** | [ADR-001: Clean Architecture](docs/decisions/ADR-001-4-tier-clean-architecture.md) | Chuẩn hóa kiến trúc 4 lớp, Zero-HAL Services, IoC Driver |
 | | [ADR-002: Zero-Bloat Diagnostics](docs/decisions/ADR-002-zero-bloat-bench-diagnostics-and-hardware-scaling.md) | Tách biệt mã test khỏi production, tối ưu Flash/RAM |
 | | [ADR-003: Binary Protocol & RTT Removal](docs/decisions/ADR-003-esp32-gateway-binary-protocol-and-rtt-removal.md) | Chuyển sang 2 MCU, giao thức nhị phân UART, bỏ SEGGER RTT |
 | | [ADR-004: Freenove ESP32-S3 CAM Migration & Pinout](docs/decisions/ADR-004-esp32s3-freenove-cam-migration-and-pinout.md) | Chuyển sang Freenove S3 CAM, bảo lưu bus Camera, gán UART1 GPIO 42/41 |
+| | [ADR-005: Line Tracking Dynamics & Safety](docs/decisions/ADR-005-line-tracking-dynamics-geometry-and-safety.md) | Trọng số hình học thực tế, triệt tiêu hunting Ki=0, out_max thích ứng, ngắt an toàn 2.0s |
 | **STM32 Motion** | [architecture.md](docs/architecture.md) | Phân tích chi tiết 4 tầng STM32, Non-blocking scheduler |
 | | [hardware_and_pinout.md](docs/hardware_and_pinout.md) | Bảng chân STM32, TB6612, Encoder, 5 mắt IR, AFIO Remap |
-| | [control_theory.md](docs/control_theory.md) | Mô hình $G(s)$, Motor PI, bù Feedforward, Anti-windup clamping |
+| | [control_theory.md](docs/control_theory.md) | Mô hình $G(s)$, Motor PI, Line Dynamics, Auto-Tuner & Headroom |
 | | [configuration_guide.md](docs/configuration_guide.md) | Bảng tra cứu tham số PID, đảo chiều motor, auto-start |
 | | [motor_encoder_direction_guide.md](docs/motor_encoder_direction_guide.md) | Ma trận chẩn đoán chiều quay bánh và chiều đếm xung encoder |
 | | [diagnostics_and_bench_testing.md](docs/diagnostics_and_bench_testing.md) | Hướng dẫn chạy test bàn chẩn đoán motor và mảng IR |
-| | [troubleshooting_and_faq.md](docs/troubleshooting_and_faq.md) | Xử lý lỗi nạp, lệch hướng, rung lắc line, mất vạch |
+| | [troubleshooting_and_faq.md](docs/troubleshooting_and_faq.md) | Xử lý lỗi nạp, lệch hướng, rung lắc line, mất vạch, Auto-Tuner |
 
 ---
 
