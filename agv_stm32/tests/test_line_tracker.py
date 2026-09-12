@@ -64,20 +64,23 @@ class PythonLineTrackerReference:
         weights = [1000, 385, 0, -385, -1000]
         sum_weighted = 0
         total_intensity = 0
+        max_intensity = 0
         active_count = 0
 
         for i in range(5):
             intensity = norm[i]
             if intensity > 300:
                 active_count += 1
+            if intensity > max_intensity:
+                max_intensity = intensity
             sum_weighted += weights[i] * intensity
             total_intensity += intensity
 
         # 1. Crossline check: >= 4 sensors active
         self.is_crossline = (active_count >= 4)
 
-        # 2. Lost line check: total intensity too low
-        if total_intensity < 200:
+        # 2. Lost line check: multi-tier condition
+        if active_count == 0 or max_intensity < 300 or total_intensity < 350:
             self.line_lost = True
             # Retain extreme error in the direction last seen
             if self.last_valid_error < 0:
@@ -222,6 +225,15 @@ class TestLineTracker(unittest.TestCase):
         error_lost = tracker.compute_error(norm_lost)
         self.assertTrue(tracker.line_lost)
         self.assertEqual(error_lost, 1000)  # Preserves rightward bias to regain line
+
+    def test_floor_reflection_noise_detected_as_lost_line(self):
+        """Ambient reflection (norm ~ 50-60 each, sum ~ 260) must be detected as line_lost"""
+        tracker = PythonLineTrackerReference()
+        # Ambient reflection on glossy floor: each sensor reads ~50-60
+        # Previously sum=265 > 200 caused line_lost to be False!
+        norm_ambient = [60, 50, 45, 55, 50]
+        error = tracker.compute_error(norm_ambient)
+        self.assertTrue(tracker.line_lost, "Ambient reflection noise must trigger line_lost")
 
     def test_pid_steering_compensation_and_clamp(self):
         """Line PID generates proportional delta_rpm clamped to out_max"""

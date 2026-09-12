@@ -266,7 +266,10 @@ void App_LineFollow_Process(void) {
              * last_valid_error < 0: vạch bên trái -> bẻ trái (trái chậm, phải nhanh)
              */
             float search_rpm = s_base_rpm * 0.6f;
-            float delta_rpm = (s_tracker.last_valid_error > 0) ? 20.0f : -20.0f;
+            if (search_rpm < 30.0f) {
+                search_rpm = 30.0f;
+            }
+            float delta_rpm = (s_tracker.last_valid_error > 0) ? (search_rpm * 0.8f) : -(search_rpm * 0.8f);
             target_left = search_rpm + delta_rpm;
             target_right = search_rpm - delta_rpm;
         } else {

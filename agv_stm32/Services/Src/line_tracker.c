@@ -91,12 +91,16 @@ int16_t line_tracker_compute_error(line_tracker_t *tracker, const uint16_t norm[
     };
     int32_t sum_weighted = 0;
     int32_t total_intensity = 0;
+    int32_t max_intensity = 0;
     int active_count = 0;
 
     for (int i = 0; i < LINE_TRACKER_NUM_SENSORS; i++) {
         int32_t intensity = (int32_t)norm[i];
         if (intensity > 300) {
             active_count++;
+        }
+        if (intensity > max_intensity) {
+            max_intensity = intensity;
         }
         sum_weighted += weights[i] * intensity;
         total_intensity += intensity;
@@ -105,8 +109,12 @@ int16_t line_tracker_compute_error(line_tracker_t *tracker, const uint16_t norm[
     /* 1. Nhận diện nút giao / ngã tư: tối thiểu 4 mắt cùng thấy vạch */
     tracker->is_crossline = (active_count >= 4);
 
-    /* 2. Nhận diện mất line: tổng cường độ vạch quá thấp */
-    if (total_intensity < 200) {
+    /* 2. Nhận diện mất line đa tầng:
+     * - active_count == 0: không có mắt nào vượt ngưỡng vạch (300)
+     * - max_intensity < 300: cảm biến sáng nhất vẫn không đạt ngưỡng vạch
+     * - total_intensity < 350: tổng cường độ quá thấp (loại bỏ nhiễu phản xạ sàn)
+     */
+    if (active_count == 0 || max_intensity < 300 || total_intensity < 350) {
         tracker->line_lost = true;
         /* Giữ sai số cực đại theo hướng lệch cuối cùng để xe tiếp tục bẻ cua tìm vạch */
         if (tracker->last_valid_error < 0) {
