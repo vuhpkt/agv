@@ -1,5 +1,6 @@
+import math
 import unittest
-from agv_esp32.tools.agv_ble_gui import TelemetryParser, LineTelemetry, StepPoint
+from agv_esp32.tools.agv_ble_gui import TelemetryParser, LineTelemetry, StepPoint, compute_auto_tune_parameters
 
 class TestTelemetryParser(unittest.TestCase):
     def setUp(self):
@@ -93,6 +94,48 @@ class TestTelemetryParser(unittest.TestCase):
         res_gen = self.parser.parse_line("Random boot message from ESP32")
         self.assertEqual(res_gen["type"], "GENERAL")
         self.assertEqual(res_gen["text"], "Random boot message from ESP32")
+
+
+class TestAutoTuning(unittest.TestCase):
+    def test_auto_tune_nominal_response(self):
+        # Simulated first-order step response with K = 0.2625 (210 RPM at 800 PWM), tau = 47ms
+        x_ms = [float(i * 10) for i in range(50)]
+        y_rpm = [210.0 * (1.0 - math.exp(-t / 47.0)) for t in x_ms]
+        tune = compute_auto_tune_parameters(x_ms, y_rpm, pwm=800)
+
+        self.assertIsNotNone(tune)
+        self.assertAlmostEqual(tune["omega_ss"], 210.0, delta=5.0)
+        self.assertAlmostEqual(tune["k_ff"], 3.81, delta=0.2)
+        self.assertGreater(tune["kp"], 4.5)
+        self.assertLess(tune["kp"], 6.5)
+        self.assertGreater(tune["ki"], 80.0)
+        self.assertLess(tune["ki"], 150.0)
+        self.assertEqual(tune["rec_speed"], 80.0)
+
+    def test_auto_tune_moderate_speed(self):
+        # 110 RPM steady state at 500 PWM
+        x_ms = [float(i * 20) for i in range(30)]
+        y_rpm = [110.0 * (1.0 - math.exp(-t / 50.0)) for t in x_ms]
+        tune = compute_auto_tune_parameters(x_ms, y_rpm, pwm=500)
+
+        self.assertIsNotNone(tune)
+        self.assertAlmostEqual(tune["omega_ss"], 110.0, delta=3.0)
+        # Recommended speed should be ~ 50 RPM (110 * 0.45 = 49.5 -> rounded to 50)
+        self.assertEqual(tune["rec_speed"], 50.0)
+
+    def test_auto_tune_insufficient_samples(self):
+        self.assertIsNone(compute_auto_tune_parameters([10.0, 20.0], [5.0, 10.0], 500))
+
+    def test_auto_tune_zero_pwm(self):
+        x = [float(i * 10) for i in range(20)]
+        y = [50.0] * 20
+        self.assertIsNone(compute_auto_tune_parameters(x, y, 0))
+
+    def test_auto_tune_stalled_motor(self):
+        x = [float(i * 10) for i in range(20)]
+        y = [0.1] * 20
+        self.assertIsNone(compute_auto_tune_parameters(x, y, 500))
+
 
 if __name__ == "__main__":
     unittest.main()

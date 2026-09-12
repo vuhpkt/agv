@@ -67,6 +67,69 @@ class StepPoint:
     speed_rads: float
 
 
+def compute_auto_tune_parameters(x_ms: List[float], y_rpm: List[float], pwm: int) -> Optional[Dict[str, Any]]:
+    """
+    Computes optimal Motor PI gains (Kp, Ki, Kff) and recommended line following speed
+    from recorded step test response using pole-placement identification.
+    
+    Plant model: G(s) = K / (tau * s + 1)
+    - K = delta_rpm / pwm
+    - Kff = 1 / K
+    - Kp = 1.4 * Kff
+    - Ki = Kp / tau
+    - Recommended line speed = clamp(round(omega_ss * 0.45 / 5) * 5, 35, 80)
+    """
+    if len(y_rpm) < 10 or len(x_ms) != len(y_rpm):
+        return None
+    
+    pwm_abs = abs(pwm)
+    if pwm_abs == 0:
+        return None
+
+    y0 = y_rpm[0]
+    n_ss = max(3, int(len(y_rpm) * 0.3))
+    omega_ss = float(sum(y_rpm[-n_ss:]) / n_ss)
+    delta_y = abs(omega_ss - y0)
+
+    # Minimum threshold to avoid noise on stalled motor
+    if delta_y < 5.0:
+        return None
+
+    gain_k = delta_y / pwm_abs
+    if gain_k <= 0:
+        return None
+
+    k_ff = max(0.5, min(15.0, 1.0 / gain_k))
+
+    # Identify tau: time to 63.2% of steady state change
+    t_start = x_ms[0]
+    t_tau = t_start
+    for i in range(1, len(y_rpm)):
+        if abs(y_rpm[i] - y0) >= 0.632 * delta_y:
+            t_tau = x_ms[i]
+            break
+
+    tau_s = max(0.015, min(0.3, (t_tau - t_start) / 1000.0))
+
+    # Pole placement PI tuning
+    kp = max(1.5, min(12.0, 1.4 * k_ff))
+    ki = max(20.0, min(350.0, kp / tau_s))
+
+    # Recommended line following speed: 45% of maximum rated steady state speed
+    raw_rec = omega_ss * 0.45
+    rec_speed = float(max(35.0, min(80.0, round(raw_rec / 5.0) * 5.0)))
+
+    return {
+        "omega_ss": round(omega_ss, 1),
+        "gain_k": round(gain_k, 4),
+        "k_ff": round(k_ff, 3),
+        "tau_s": round(tau_s, 3),
+        "kp": round(kp, 2),
+        "ki": round(ki, 1),
+        "rec_speed": rec_speed,
+    }
+
+
 class TelemetryParser:
     """Pure logic parser to decompose incoming BLE strings into structured events."""
 
@@ -321,10 +384,13 @@ class AgvDashboardApp:
         self.is_connected = False
         self.current_speed_rpm = 50.0
 
-        # Step response buffer
+        # Step response buffer and auto-tune state
         self.step_data_x: List[float] = []
         self.step_data_y: List[float] = []
         self.is_recording_step = False
+        self.last_step_rx_time = 0.0
+        self.last_tuned_result: Optional[Dict[str, Any]] = None
+        self.auto_apply_tune_var = ctk.BooleanVar(value=True) if ctk else None
 
         # Calibration buffer
         self.calib_min = [4095] * 5
@@ -591,14 +657,62 @@ class AgvDashboardApp:
 
         # Performance Metrics Box
         m_box = ctk.CTkFrame(ctrl_frame, corner_radius=6)
-        m_box.pack(fill="x", padx=15, pady=12)
+        m_box.pack(fill="x", padx=15, pady=(10, 6))
         self.lbl_step_metrics = ctk.CTkLabel(
             m_box,
-            text="Metrics:\n• Peak: --- RPM\n• Steady: --- RPM\n• Rise Time: --- ms",
+            text="Metrics:\n• Peak: --- RPM\n• Steady: --- RPM\n• Duration: --- ms",
             justify="left",
             font=ctk.CTkFont(size=12)
         )
         self.lbl_step_metrics.pack(padx=10, pady=8, anchor="w")
+
+        # Auto-Tune Gains & Speed Card
+        tune_box = ctk.CTkFrame(ctrl_frame, corner_radius=6, fg_color="#1E282D")
+        tune_box.pack(fill="x", padx=15, pady=6)
+        ctk.CTkLabel(
+            tune_box,
+            text="⚡ AUTO-TUNING (PI & SPEED)",
+            font=ctk.CTkFont(size=12, weight="bold"),
+            text_color="#00E676"
+        ).pack(anchor="w", padx=10, pady=(6, 2))
+
+        self.lbl_autotune = ctk.CTkLabel(
+            tune_box,
+            text="• Kp: --- | Ki: --- | Kff: ---\n• Rec. Line Speed: --- RPM",
+            justify="left",
+            font=ctk.CTkFont(size=11)
+        )
+        self.lbl_autotune.pack(anchor="w", padx=10, pady=2)
+
+        self.chk_auto_apply = ctk.CTkCheckBox(
+            tune_box,
+            text="Auto-apply after step test",
+            variable=self.auto_apply_tune_var,
+            font=ctk.CTkFont(size=11)
+        )
+        self.chk_auto_apply.pack(anchor="w", padx=10, pady=4)
+
+        btn_tune_bar = ctk.CTkFrame(tune_box, fg_color="transparent")
+        btn_tune_bar.pack(fill="x", padx=10, pady=(2, 6))
+
+        self.btn_apply_tune = ctk.CTkButton(
+            btn_tune_bar,
+            text="⚡ Apply Now",
+            height=28,
+            fg_color="#0288D1",
+            hover_color="#0277BD",
+            command=self._apply_auto_tune
+        )
+        self.btn_apply_tune.pack(side="left", fill="x", expand=True, padx=(0, 4))
+
+        self.btn_save_tune = ctk.CTkButton(
+            btn_tune_bar,
+            text="💾 Save Header",
+            height=28,
+            fg_color="#37474F",
+            command=self._save_tune_header
+        )
+        self.btn_save_tune.pack(side="right", fill="x", expand=True, padx=(4, 0))
 
         # Plot Right
         plot_frame = ctk.CTkFrame(frame, corner_radius=8)
@@ -637,7 +751,12 @@ class AgvDashboardApp:
         self.step_data_x.clear()
         self.step_data_y.clear()
         self.is_recording_step = True
+        self.last_step_rx_time = time.time()
+        self.last_tuned_result = None
         self._update_plot([], [])
+        self.lbl_autotune.configure(
+            text="• Step test running...\n• Auto-tune will compute on completion"
+        )
 
         cmd = f"STEP_TEST {motor} {pwm} {ms}"
         self._send_cmd(cmd)
@@ -664,6 +783,78 @@ class AgvDashboardApp:
             for x, y in zip(self.step_data_x, self.step_data_y):
                 f.write(f"{x:.1f},{y:.2f}\n")
         self._append_log(f"[EXPORT] Saved {len(self.step_data_x)} points to {filename}")
+
+    def _finish_step_test(self):
+        if not self.is_recording_step:
+            return
+        self.is_recording_step = False
+        pwm = int(self.step_pwm_slider.get())
+        tune = compute_auto_tune_parameters(self.step_data_x, self.step_data_y, pwm)
+        if tune:
+            self.last_tuned_result = tune
+            self.lbl_autotune.configure(
+                text=f"• Kp: {tune['kp']:.2f} | Ki: {tune['ki']:.1f} | Kff: {tune['k_ff']:.3f}\n• Rec. Line Speed: {tune['rec_speed']:.0f} RPM"
+            )
+            if self.auto_apply_tune_var and self.auto_apply_tune_var.get():
+                self._apply_auto_tune()
+            else:
+                self._append_log(
+                    f"[AUTO-TUNE] Computed parameters: Kp={tune['kp']:.2f}, Ki={tune['ki']:.1f}, "
+                    f"Kff={tune['k_ff']:.3f}, Rec. Speed={tune['rec_speed']:.0f} RPM (Click 'Apply Now' to push)"
+                )
+        else:
+            self.lbl_autotune.configure(text="• Step test complete.\n• Insufficient data to tune.")
+
+    def _apply_auto_tune(self):
+        if not self.last_tuned_result:
+            self._append_log("[AUTO-TUNE] No tuned parameters available. Run step test first.")
+            return
+
+        tune = self.last_tuned_result
+        kp = tune["kp"]
+        ki = tune["ki"]
+        kff = tune["k_ff"]
+        rec_speed = tune["rec_speed"]
+
+        # 1. Send PI_TUNE to STM32 over BLE
+        cmd = f"PI_TUNE {kp:.2f} {ki:.1f} {kff:.3f}"
+        self._send_cmd(cmd)
+
+        # 2. Update Tab 1 (Dashboard) speed slider
+        self.current_speed_rpm = rec_speed
+        self.slider_speed.set(rec_speed)
+        self.lbl_speed.configure(text=f"Target Speed: {rec_speed:.1f} RPM")
+
+        # 3. Update Tab 4 (Route Planner) base RPM
+        self.entry_route_rpm.delete(0, "end")
+        self.entry_route_rpm.insert(0, str(int(rec_speed)))
+
+        self._append_log(
+            f"[AUTO-TUNE] ✓ Applied: {cmd} | Synced Line Speed: {rec_speed:.0f} RPM to Tab 1 & Tab 4"
+        )
+        self.lbl_autotune.configure(
+            text=f"✓ APPLIED TO ROBOT & SPEED SYNCED\n• Kp: {kp:.2f} | Ki: {ki:.1f} | Kff: {kff:.3f}\n• Line Speed: {rec_speed:.0f} RPM"
+        )
+
+    def _save_tune_header(self):
+        if not self.last_tuned_result:
+            self._append_log("[AUTO-TUNE] No tuned parameters to save. Run step test first.")
+            return
+        tune = self.last_tuned_result
+        header_path = "motor_pi_defaults.h"
+        content = (
+            "#ifndef MOTOR_PI_DEFAULTS_H\n"
+            "#define MOTOR_PI_DEFAULTS_H\n\n"
+            "/* Auto-generated by AGV BLE Dashboard Auto-Tuner */\n"
+            f"#define MOTOR_PI_TUNED_KP     {tune['kp']:.2f}f\n"
+            f"#define MOTOR_PI_TUNED_KI     {tune['ki']:.1f}f\n"
+            f"#define MOTOR_PI_TUNED_KFF    {tune['k_ff']:.3f}f\n"
+            f"#define AGV_LINE_DEFAULT_RPM  {tune['rec_speed']:.1f}f\n\n"
+            "#endif /* MOTOR_PI_DEFAULTS_H */\n"
+        )
+        with open(header_path, "w", encoding="utf-8") as f:
+            f.write(content)
+        self._append_log(f"[AUTO-TUNE] Configuration saved to {header_path}")
 
     # =========================================================================
     # Tab 3: Line Optical Calibration
@@ -947,11 +1138,18 @@ class AgvDashboardApp:
                         self._append_log(raw_str)
                     elif p_type in ("RESP", "ACK", "ERR", "LOG"):
                         self._append_log(raw_str)
+                        if self.is_recording_step and "[STEP_TEST]" in raw_str:
+                            self._finish_step_test()
                     else:
                         self._append_log(raw_str)
 
             except queue.Empty:
                 break
+
+        # Auto-detect end of step response stream when stream is idle
+        if self.is_recording_step and len(self.step_data_x) >= 10:
+            if (time.time() - self.last_step_rx_time) > 1.0:
+                self._finish_step_test()
 
         # Re-arm polling
         self.root.after(20, self._poll_ble_events)
@@ -990,6 +1188,7 @@ class AgvDashboardApp:
     def _handle_step_point(self, step: StepPoint):
         self.step_data_x.append(step.time_ms)
         self.step_data_y.append(step.speed_rpm)
+        self.last_step_rx_time = time.time()
         self._update_plot(self.step_data_x, self.step_data_y)
 
         # Update metrics live
