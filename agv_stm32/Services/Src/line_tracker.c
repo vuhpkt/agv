@@ -78,8 +78,17 @@ int16_t line_tracker_compute_error(line_tracker_t *tracker, const uint16_t norm[
         return 0;
     }
 
-    /* Trọng số vị trí: CH0(R2)=+1000, CH1(R1)=+500, CH2(MID)=0, CH3(L1)=-500, CH4(L2)=-1000 */
-    static const int32_t weights[LINE_TRACKER_NUM_SENSORS] = {1000, 500, 0, -500, -1000};
+    /* Trọng số vị trí hình học thực tế:
+     * CH0(R2)=+1000 (3.25cm), CH1(R1)=+385 (1.25cm), CH2(MID)=0 (0cm),
+     * CH3(L1)=-385 (1.25cm), CH4(L2)=-1000 (3.25cm)
+     */
+    static const int32_t weights[LINE_TRACKER_NUM_SENSORS] = {
+        LINE_TRACKER_WEIGHT_OUTER,
+        LINE_TRACKER_WEIGHT_INNER,
+        LINE_TRACKER_WEIGHT_CENTER,
+        -LINE_TRACKER_WEIGHT_INNER,
+        -LINE_TRACKER_WEIGHT_OUTER
+    };
     int32_t sum_weighted = 0;
     int32_t total_intensity = 0;
     int active_count = 0;

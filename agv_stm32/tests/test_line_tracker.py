@@ -60,7 +60,8 @@ class PythonLineTrackerReference:
         return norm
 
     def compute_error(self, norm):
-        weights = [1000, 500, 0, -500, -1000]
+        # Weights matching physical spacing: center=0, inner(1.25cm)=385, outer(3.25cm)=1000
+        weights = [1000, 385, 0, -385, -1000]
         sum_weighted = 0
         total_intensity = 0
         active_count = 0
@@ -155,34 +156,46 @@ class TestLineTracker(unittest.TestCase):
     def test_line_shifted_left_produces_negative_error(self):
         """Line shifted left (sensor 3 or 4 high) must produce negative error"""
         tracker = PythonLineTrackerReference()
-        # Black line on sensor 4 (L2 - leftmost)
+        # Black line on sensor 4 (L2 - leftmost, 3.25cm from center)
         raw = [3500, 3500, 3500, 3500, 100]
         norm = tracker.normalize(raw)
         error = tracker.compute_error(norm)
         self.assertEqual(error, -1000)
 
+        # Black line on sensor 3 (L1 - inner left, 1.25cm from center)
+        raw = [3500, 3500, 3500, 100, 3500]
+        norm = tracker.normalize(raw)
+        error = tracker.compute_error(norm)
+        self.assertEqual(error, -385)
+
         # Black line between sensor 3 (L1) and sensor 4 (L2)
         raw = [3500, 3500, 3500, 100, 100]
         norm = tracker.normalize(raw)
         error = tracker.compute_error(norm)
-        # (-500*1000 + -1000*1000) / 2000 = -750
-        self.assertEqual(error, -750)
+        # (-385*1000 + -1000*1000) / 2000 = -1385 / 2 = -692
+        self.assertEqual(error, -692)
 
     def test_line_shifted_right_produces_positive_error(self):
         """Line shifted right (sensor 0 or 1 high) must produce positive error"""
         tracker = PythonLineTrackerReference()
-        # Black line on sensor 0 (R2 - rightmost)
+        # Black line on sensor 0 (R2 - rightmost, 3.25cm from center)
         raw = [100, 3500, 3500, 3500, 3500]
         norm = tracker.normalize(raw)
         error = tracker.compute_error(norm)
         self.assertEqual(error, 1000)
 
+        # Black line on sensor 1 (R1 - inner right, 1.25cm from center)
+        raw = [3500, 100, 3500, 3500, 3500]
+        norm = tracker.normalize(raw)
+        error = tracker.compute_error(norm)
+        self.assertEqual(error, 385)
+
         # Black line between sensor 0 (R2) and sensor 1 (R1)
         raw = [100, 100, 3500, 3500, 3500]
         norm = tracker.normalize(raw)
         error = tracker.compute_error(norm)
-        # (1000*1000 + 500*1000) / 2000 = 750
-        self.assertEqual(error, 750)
+        # (1000*1000 + 385*1000) / 2000 = 1385 / 2 = 692
+        self.assertEqual(error, 692)
 
     def test_crossline_detected_when_all_sensors_on_line(self):
         """All 5 sensors seeing line indicates crossline/intersection"""

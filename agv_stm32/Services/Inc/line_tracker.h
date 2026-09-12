@@ -10,6 +10,16 @@ extern "C" {
 
 #define LINE_TRACKER_NUM_SENSORS 5
 
+/**
+ * @brief Trọng số hình học mảng 5 mắt IR (khoảng cách thực tế tính từ mắt tâm):
+ * - Mắt 3 (Tâm): 0.00 cm -> 0
+ * - Mắt 2 & 4:   1.25 cm -> 385  (1000 * 1.25 / 3.25)
+ * - Mắt 1 & 5:   3.25 cm -> 1000 (1000 * 3.25 / 3.25)
+ */
+#define LINE_TRACKER_WEIGHT_OUTER   1000
+#define LINE_TRACKER_WEIGHT_INNER   385
+#define LINE_TRACKER_WEIGHT_CENTER  0
+
 typedef struct {
     float kp;
     float ki;

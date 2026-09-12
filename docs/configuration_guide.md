@@ -18,7 +18,7 @@ Tài liệu này tập hợp và hướng dẫn chi tiết vị trí các macro,
 | **Độ phân giải Encoder (CPR)** | `MOTOR_ENCODER_CPR` (1320) | [`Application/Src/app_motor_control.c`](file:///d:/Workspace/Projects/AGV/agv_stm32/Application/Src/app_motor_control.c#L22) | Số xung 4X trên 1 vòng bánh xe |
 | **Hệ số PI Motor & Feedforward**| `kp`, `ki`, `k_ff`, `deadzone` | [`Services/Inc/motor_pi.h`](file:///d:/Workspace/Projects/AGV/agv_stm32/Services/Inc/motor_pi.h#L18) | Căn chỉnh bám vận tốc bánh xe |
 | **Hệ số Line PID & Đánh lái** | `kp`, `ki`, `kd`, `out_max` | [`Application/Src/app_line_follow.c`](file:///d:/Workspace/Projects/AGV/agv_stm32/Application/Src/app_line_follow.c#L25) | Căn chỉnh độ nhạy bẻ cua bám vạch |
-| **Trọng số Vị trí Mắt IR** | `weights` | [`Services/Src/line_tracker.c`](file:///d:/Workspace/Projects/AGV/agv_stm32/Services/Src/line_tracker.c#L82) | Trọng số sai số: `[+1000, +500, 0, -500, -1000]` |
+| **Trọng số Vị trí Mắt IR** | `weights` | [`Services/Src/line_tracker.c`](file:///d:/Workspace/Projects/AGV/agv_stm32/Services/Src/line_tracker.c#L82) | Trọng số sai số theo khoảng cách thực tế (1.25cm & 3.25cm): `[+1000, +385, 0, -385, -1000]` |
 | **Tần số & Chu kỳ PWM** | `TIM4_PERIOD` (3599) | [`BSP/Src/bsp_motor.c`](file:///d:/Workspace/Projects/AGV/agv_stm32/BSP/Src/bsp_motor.c#L44) | Tần số siêu âm 20 kHz, tự động co giãn duty |
 
 ---
@@ -120,12 +120,15 @@ Hệ thống điều khiển vận tốc 2 bánh xe vi sai hoạt động ở t�
 Các thông số bám vạch được cấu hình tại [`Application/Src/app_line_follow.c`](file:///d:/Workspace/Projects/AGV/agv_stm32/Application/Src/app_line_follow.c) và [`Services/Src/line_tracker.c`](file:///d:/Workspace/Projects/AGV/agv_stm32/Services/Src/line_tracker.c):
 
 #### A. Trọng số hình học mảng cảm biến (`line_tracker.c`)
-Tương ứng với thứ tự mắt từ Phải qua Trái `[R2, R1, MID, L1, L2]`:
+Tương ứng với khoảng cách thực tế từ mắt tâm (MID / Mắt 3 = 0 cm), mắt trong (R1, L1 = 1.25 cm), mắt ngoài (R2, L2 = 3.25 cm).
+Tỉ lệ khoảng cách: $1.25 / 3.25 = 5 / 13 \approx 0.3846$ (chuẩn hóa về biên $\pm 1000$ tương ứng $\pm 385$):
 ```c
-static const int32_t weights[LINE_TRACKER_NUM_SENSORS] = {1000, 500, 0, -500, -1000};
+static const int32_t weights[LINE_TRACKER_NUM_SENSORS] = {1000, 385, 0, -385, -1000};
 ```
 - Khi lệch sang phải ($R2, R1$): $e_{line} > 0$.
 - Khi lệch sang trái ($L1, L2$): $e_{line} < 0$.
+- Khi vạch nằm ngay mắt 2 hoặc 4 ($1.25\text{ cm}$): $e_{line} \approx \pm 385$.
+- Khi vạch nằm ngay mắt 1 hoặc 5 ($3.25\text{ cm}$): $e_{line} \approx \pm 1000$.
 
 #### B. Bộ điều khiển Line PID (`app_line_follow.c`)
 ```c
