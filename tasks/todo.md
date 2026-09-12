@@ -92,3 +92,73 @@
 - [x] Tất cả các bài test phần mềm (132 tests tổng cộng) vượt qua.
 - [x] Firmware binary `agv_esp32.bin` sẵn sàng nạp qua cổng Type-C "UART".
 - [x] Bảng hướng dẫn cắm dây vật lý rõ ràng cho người dùng.
+
+---
+
+# Giai Đoạn 3: AGV Wireless Desktop GUI Dashboard (Python / CustomTkinter)
+
+## Task 5: Xây Dựng Module Lõi Đa Luồng & Phân Tích Telemetry (`AsyncBleWorker` + `TelemetryParser`)
+**Description:** Xây dựng module nền tảng chạy `bleak` và `asyncio` an toàn trong một daemon thread riêng biệt, giao tiếp hai chiều với GUI thread qua hàng đợi `queue.Queue`. Xây dựng parser tách dòng telemetry IR (`DATA:LINE`), bước nhảy (`DATA:<ms>`), phản hồi trạng thái và log.
+
+**Acceptance criteria:**
+- [x] `AsyncBleWorker` kết nối được với `AGV_ESP32`, tự động gửi/nhận chuỗi không làm nghẽn GUI main thread.
+- [x] `TelemetryParser` chuyển đổi chính xác dữ liệu 5 mắt IR và sai số line $e_{line}$.
+- [x] Dữ liệu step response được gom mảng tọa độ $(t, RPM)$ sạch sẽ.
+
+**Verification:**
+- [x] Kiểm thử unit test chạy pass 100% (Ran 8 tests in 0.000s).
+
+**Dependencies:** Task 4.
+
+**Files touched:**
+- `agv_esp32/tools/agv_ble_gui.py`
+
+**Estimated scope:** Medium (1 file).
+
+---
+
+## Task 6: Xây Dựng Giao Diện Đồ Họa Desktop Dashboard (`CustomTkinter` + `Matplotlib`)
+**Description:** Xây dựng giao diện Dark Mode với `customtkinter`: Header (kết nối, RSSI, nút PING, nút Emergency Stop màu đỏ), Tab 1 Giám sát mảng 5 mắt IR với thanh bar đồ họa & điều khiển tay, Tab 2 Đồ thị Step Response nhúng Matplotlib, Tab 3 Hiệu chuẩn quang học, Tab 4 Lập trình lộ trình, và Console log bên dưới.
+
+**Acceptance criteria:**
+- [x] Giao diện mở lên mượt mà ở độ phân giải chuẩn (1180x820), các widget bo góc sắc nét.
+- [x] 5 thanh bar cảm biến IR nhảy theo dữ liệu thực tế ở tần số 20Hz.
+- [x] Đồ thị Matplotlib nhúng cập nhật đường cong đáp ứng khi chạy test động cơ.
+- [x] Nút Dừng Khẩn Cấp gửi lệnh `STOP` tức thời.
+
+**Verification:**
+- [x] `agv_esp32/tools/agv_ble_gui.py` cú pháp chuẩn xác, hỗ trợ đầy đủ 4 tab chức năng và nút Dừng khẩn cấp.
+
+**Dependencies:** Task 5.
+
+**Files touched:**
+- `agv_esp32/tools/agv_ble_gui.py`
+
+**Estimated scope:** Medium (1 file).
+
+---
+
+## Task 7: Viết Bộ Test Tự Động Toàn Diện Cho GUI & Cập Nhật Tài Liệu
+**Description:** Viết bộ test `agv_esp32/tools/test_ble_gui.py` kiểm thử độc lập các logic parser, hàng đợi sự kiện và bộ lọc dữ liệu. Cập nhật `README.md` với hướng dẫn khởi chạy GUI.
+
+**Acceptance criteria:**
+- [x] Tất cả unit tests trong `test_ble_gui.py` PASS 100%.
+- [x] `README.md` có hướng dẫn chạy GUI: `py -3 agv_esp32/tools/agv_ble_gui.py`.
+
+**Verification:**
+- [x] Chạy `py -3 -m unittest agv_esp32/tools/test_ble_gui.py` -> PASS 8/8 tests.
+
+**Dependencies:** Task 6.
+
+**Files touched:**
+- `agv_esp32/tools/test_ble_gui.py`
+- `README.md`
+
+**Estimated scope:** Small (2 files).
+
+---
+
+## Checkpoint 3: Hoàn Tất Triển Khai GUI Dashboard
+- [x] Toàn bộ unit test (cũ và mới) chạy PASS 100% (140/140 tests).
+- [x] Ứng dụng Desktop GUI sẵn sàng vận hành trên máy tính của người dùng (`py -3 agv_esp32/tools/agv_ble_gui.py`).
+

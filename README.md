@@ -4,7 +4,7 @@
 [![STM32](https://img.shields.io/badge/STM32-STM32F103C8T6%20%40%2072MHz-blue.svg)]()
 [![ESP32-S3](https://img.shields.io/badge/ESP32--S3-Xtensa%20LX7%20%40%20240MHz-red.svg)]()
 [![IDF](https://img.shields.io/badge/ESP--IDF-v6.x-brightgreen.svg)]()
-[![Tests](https://img.shields.io/badge/Tests-132%20passed-brightgreen.svg)]()
+[![Tests](https://img.shields.io/badge/Tests-140%20passed-brightgreen.svg)]()
 [![License](https://img.shields.io/badge/License-MIT-green.svg)]()
 
 Hệ thống robot tự hành AGV hai bánh vi sai (Two-Wheel Differential Drive Mobile Robot) chuyên dụng cho bám vạch kẻ sàn (Line Tracking) trong nhà kho thông minh và sa bàn mô phỏng công nghiệp.
@@ -166,8 +166,15 @@ idf.py -p COMx flash monitor
 ```
 
 ### 3. Công Cụ Test Không Dây BLE Trên Máy Tính
+Yêu cầu: Python 3.10+, `bleak`, `customtkinter`, `matplotlib`
 ```bash
-pip install bleak
-python agv_esp32/tools/agv_ble_controller.py
+# Cài đặt thư viện giao diện
+pip install bleak customtkinter matplotlib
+
+# 1. Khởi chạy Desktop GUI Dashboard (Khuyên dùng):
+py -3 agv_esp32/tools/agv_ble_gui.py
+
+# 2. Hoặc chạy giao diện dòng lệnh CLI (REPL):
+py -3 agv_esp32/tools/agv_ble_controller.py
 ```
-Các lệnh text hỗ trợ từ PC: `PING`, `STEP_TEST <motor> <pwm> <ms>`, `GET_ENC`, `RESET_ENC`, `ROUTE_TEST`, `STOP`.
+Các tính năng hỗ trợ: Quét & kết nối BLE, Thanh đo đồ họa 5 mắt IR 20Hz, Điều khiển tay D-Pad, Đồ thị đáp ứng bước nhảy động cơ (Step Test), Hiệu chuẩn quang học (Calibrate Line), Lập trình lộ trình tự hành (Route Mission), và Dừng khẩn cấp.
