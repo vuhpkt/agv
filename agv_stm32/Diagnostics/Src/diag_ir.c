@@ -146,8 +146,8 @@ void Diag_IR_Process(void) {
 
     if (s_mode == DIAG_IR_MODE_TRACK) {
         float delta_v = line_tracker_compute_pid(&s_tracker, err, 0.01f);
-        float v_l = s_base_rpm - delta_v;
-        float v_r = s_base_rpm + delta_v;
+        float v_l = s_base_rpm + delta_v;
+        float v_r = s_base_rpm - delta_v;
         App_MotorControl_SetTargetRPM(v_l, v_r);
     }
 

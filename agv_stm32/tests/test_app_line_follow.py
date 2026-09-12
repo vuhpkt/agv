@@ -7,8 +7,8 @@ Verifies:
 2. State machine definitions (IDLE, CALIBRATING, TRACKING, CROSS_LINE, LOST).
 3. API declarations (Init, Start, Stop, Process, GetState, SetPID).
 4. Differential steering kinematics formula:
-   left_rpm = base_rpm - delta_rpm
-   right_rpm = base_rpm + delta_rpm
+   left_rpm = base_rpm + delta_rpm
+   right_rpm = base_rpm - delta_rpm
 5. CMakeLists.txt target_sources inclusion.
 """
 
@@ -55,8 +55,8 @@ class TestAppLineFollow(unittest.TestCase):
         # When error < 0 (line on left, robot on right -> turn left -> left slows, right speeds up)
         # delta_rpm < 0
         delta_rpm = -20.0
-        left_rpm = base_rpm - (-delta_rpm)   # 80.0
-        right_rpm = base_rpm + (-delta_rpm)  # 120.0
+        left_rpm = base_rpm + delta_rpm      # 80.0
+        right_rpm = base_rpm - delta_rpm     # 120.0
         self.assertLess(left_rpm, right_rpm)
         self.assertEqual(left_rpm + right_rpm, 2 * base_rpm)
 

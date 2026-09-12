@@ -259,16 +259,22 @@ void App_LineFollow_Process(void) {
             target_left = s_base_rpm;
             target_right = s_base_rpm;
         } else if (s_state == LINE_STATE_LOST) {
-            /* Khi mất vạch: dò lại vạch theo hướng lệch cuối cùng ở tốc độ 60% */
+            /* Khi mất vạch: dò lại vạch theo hướng lệch cuối cùng ở tốc độ 60%
+             * last_valid_error > 0: vạch bên phải -> bẻ phải (trái nhanh, phải chậm)
+             * last_valid_error < 0: vạch bên trái -> bẻ trái (trái chậm, phải nhanh)
+             */
             float search_rpm = s_base_rpm * 0.6f;
             float delta_rpm = (s_tracker.last_valid_error > 0) ? 20.0f : -20.0f;
-            target_left = search_rpm - delta_rpm;
-            target_right = search_rpm + delta_rpm;
+            target_left = search_rpm + delta_rpm;
+            target_right = search_rpm - delta_rpm;
         } else {
-            /* Bám line thông thường qua Line PID */
+            /* Bám line thông thường qua Line PID (Hồi tiếp âm ổn định):
+             * error > 0 (vạch lệch phải): delta_rpm > 0 -> target_left tăng, target_right giảm -> bẻ PHẢI
+             * error < 0 (vạch lệch trái): delta_rpm < 0 -> target_left giảm, target_right tăng -> bẻ TRÁI
+             */
             float delta_rpm = line_tracker_compute_pid(&s_tracker, s_last_error, 0.01f);
-            target_left = s_base_rpm - delta_rpm;
-            target_right = s_base_rpm + delta_rpm;
+            target_left = s_base_rpm + delta_rpm;
+            target_right = s_base_rpm - delta_rpm;
         }
 
         App_MotorControl_SetTargetRPM(target_left, target_right);

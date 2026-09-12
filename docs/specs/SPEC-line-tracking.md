@@ -5,7 +5,8 @@
 2. **Đặc tuyến tín hiệu**: Tín hiệu đọc qua ADC1 12-bit (`0` đến `4095`), điện áp `0V` đến `3.3V`. Mắt cảm biến cho giá trị ADC cao khi gặp bề mặt sáng/trắng (phản xạ mạnh) và giá trị thấp khi gặp vạch đen (hấp thụ ánh sáng), hoặc ngược lại tùy loại module $\rightarrow$ hệ thống cần tính năng **Tự động Hiệu chuẩn (Auto-calibration min/max)** để tự thích ứng.
 3. **Mô hình bám đường**: Đường line có độ rộng từ 1.5 cm đến 3.0 cm (chuẩn băng keo đen cách điện dán trên nền trắng).
 4. **Cơ cấu chấp hành**: 2 bánh xe vi sai được điều khiển độc lập qua `velocity_service` (RPM vòng kín). Đầu ra của bộ điều khiển Line PID là lượng bù vận tốc góc $\Delta v$ (hoặc $\Delta \text{RPM}$):
-   $$v_{left} = v_{base} - \Delta v, \quad v_{right} = v_{base} + \Delta v$$
+   $$v_{left} = v_{base} + \Delta v, \quad v_{right} = v_{base} - \Delta v$$
+   *(Khi $e > 0$ lệch phải $\rightarrow \Delta v > 0 \rightarrow v_{left} > v_{right}$ để bẻ phải; khi $e < 0$ lệch trái $\rightarrow \Delta v < 0 \rightarrow v_{left} < v_{right}$ để bẻ trái).*
 5. **Nút giao / Giao lộ**: Nhận diện khi cả 5 mắt (hoặc tối thiểu 4 mắt) cùng vượt ngưỡng phát hiện vạch đồng thời (Cross-line / Vạch ngang).
 
 ---
