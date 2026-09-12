@@ -16,8 +16,8 @@
 #define LINE_FOLLOW_LOOP_RATE_MS    10     /**< Chu kỳ điều khiển bám line 10ms (100Hz) */
 #define LINE_CALIB_DURATION_MS      3000   /**< Thời gian tự hiệu chuẩn min/max (3 giây) */
 #define LINE_LOST_TIMEOUT_MS        2000   /**< Thời gian an toàn ngắt motor khi mất vạch liên tục (2 giây) */
-#define CROSSLINE_DEBOUNCE_MS       400    /**< Thời gian debounce sau khi qua ngã rẽ */
-#define TURN_MIN_DURATION_MS        350    /**< Thời gian quay tối thiểu để thoát khỏi line cũ */
+#define CROSSLINE_DEBOUNCE_MS       200    /**< Thời gian debounce sau khi qua ngã rẽ (200ms) */
+#define TURN_MIN_DURATION_MS        250    /**< Thời gian quay tối thiểu để thoát khỏi line cũ (250ms) */
 
 static line_state_t s_state = LINE_STATE_IDLE;
 static line_tracker_t s_tracker;
@@ -150,7 +150,7 @@ void App_LineFollow_Process(void) {
     }
 
     /* 2. Xử lý trạng thái đang quay đầu tại ngã rẽ */
-    if (s_state == LINE_STATE_TURNING_LEFT || s_state == LINE_STATE_TURNING_RIGHT) {
+    if (s_state == LINE_STATE_TURNING_LEFT) {
         BSP_IR_GetRaw(s_last_raw);
         line_tracker_normalize(&s_tracker, s_last_raw, s_last_norm);
         line_tracker_compute_error(&s_tracker, s_last_norm);
@@ -158,22 +158,71 @@ void App_LineFollow_Process(void) {
         float turn_speed = s_base_rpm * 0.6f;
         if (turn_speed < 30.0f) turn_speed = 30.0f;
 
-        float target_l, target_r;
-        if (s_state == LINE_STATE_TURNING_LEFT) {
-            target_l = -turn_speed;
-            target_r = turn_speed;
-        } else {
-            target_l = turn_speed;
-            target_r = -turn_speed;
-        }
+        float target_l = -turn_speed;
+        float target_r = turn_speed;
 
         /* Khi đã quay quá thời gian tối thiểu và mắt IR giữa bắt được vạch nhánh */
         if ((uint32_t)(now - s_turn_start_tick) >= TURN_MIN_DURATION_MS) {
-            bool center_on_line = (s_last_norm[2] > s_tracker.calib.threshold[2]);
+            bool center_on_line = (s_last_norm[2] >= 400);
             if (center_on_line && !s_tracker.is_crossline) {
                 s_state = LINE_STATE_TRACKING;
                 s_crossline_debounce_until = now + CROSSLINE_DEBOUNCE_MS;
                 s_lost_start_tick = 0;
+                line_tracker_reset(&s_tracker);
+            }
+        }
+
+        App_MotorControl_SetTargetRPM(target_l, target_r);
+        return;
+    }
+
+    if (s_state == LINE_STATE_TURNING_RIGHT) {
+        BSP_IR_GetRaw(s_last_raw);
+        line_tracker_normalize(&s_tracker, s_last_raw, s_last_norm);
+
+        /* Đặt giá trị 2 mắt bên trái bằng 0: chỉ dùng mắt phải dò line */
+        s_last_norm[3] = 0;
+        s_last_norm[4] = 0;
+
+        /* Trọng số hình học cho 3 mắt phải [IR0(R2)=+1000, IR1(R1)=+385, IR2(MID)=0] */
+        int32_t norm_r2 = (int32_t)s_last_norm[0];
+        int32_t norm_r1 = (int32_t)s_last_norm[1];
+        int32_t norm_mid = (int32_t)s_last_norm[2];
+
+        int32_t total_right = norm_r2 + norm_r1 + norm_mid;
+        int16_t turn_err;
+
+        if (total_right < 200) {
+            /* Chưa mắt nào bên phải thấy vạch nhánh: ép bẻ lái cực đại sang phải để bắt vạch */
+            turn_err = 1000;
+        } else {
+            /* Tính sai số có trọng số từ 3 mắt phải theo khoảng cách vật lý */
+            int32_t sum_w = norm_r2 * LINE_TRACKER_WEIGHT_OUTER + norm_r1 * LINE_TRACKER_WEIGHT_INNER;
+            turn_err = (int16_t)(sum_w / total_right);
+            if (turn_err > 1000) turn_err = 1000;
+            if (turn_err < 0) turn_err = 0;
+        }
+        s_last_error = turn_err;
+
+        float turn_speed = s_base_rpm * 0.6f;
+        if (turn_speed < 30.0f) turn_speed = 30.0f;
+
+        /* Sử dụng Line PID để xe tự ôm cua mượt theo vạch rẽ */
+        s_tracker.pid_cfg.out_max = turn_speed;
+        float delta_v = line_tracker_compute_pid(&s_tracker, turn_err, 0.01f);
+
+        float target_l = turn_speed + delta_v;
+        float target_r = turn_speed - delta_v;
+
+        /* Khi đã quay quá thời gian tối thiểu và mắt IR giữa bắt được vạch nhánh */
+        if ((uint32_t)(now - s_turn_start_tick) >= TURN_MIN_DURATION_MS) {
+            bool center_on_line = (norm_mid >= 400);
+            if (center_on_line && norm_r2 < 300 && turn_err < 300 && !s_tracker.is_crossline) {
+                s_state = LINE_STATE_TRACKING;
+                s_crossline_debounce_until = now + CROSSLINE_DEBOUNCE_MS;
+                s_lost_start_tick = 0;
+                s_tracker.pid_cfg.out_max = (s_base_rpm >= 60.0f) ? s_base_rpm : 60.0f;
+                line_tracker_reset(&s_tracker);
             }
         }
 
@@ -209,6 +258,7 @@ void App_LineFollow_Process(void) {
                     } else if (action == AGV_ACTION_TURN_LEFT) {
                         s_state = LINE_STATE_TURNING_LEFT;
                         s_turn_start_tick = now;
+                        line_tracker_reset(&s_tracker);
                         if (s_route_step >= s_route_count) {
                             s_is_route_mode = false;
                             App_LineFollow_Stop();
@@ -218,6 +268,7 @@ void App_LineFollow_Process(void) {
                     } else if (action == AGV_ACTION_TURN_RIGHT) {
                         s_state = LINE_STATE_TURNING_RIGHT;
                         s_turn_start_tick = now;
+                        line_tracker_reset(&s_tracker);
                         if (s_route_step >= s_route_count) {
                             s_is_route_mode = false;
                             App_LineFollow_Stop();
