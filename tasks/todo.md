@@ -1,164 +1,84 @@
-# Danh Sách Nhiệm Vụ Triển Khai: Chuyển Đổi Sang Freenove ESP32-S3 CAM
+# Danh Sách Nhiệm Vụ: Điều Hướng Ngã Rẽ Sau Vạch Ngang & Dò 3 Mắt Phải
 
-## Task 1: Cấu hình ESP-IDF Target `esp32s3` & Chuẩn hóa `sdkconfig.defaults`
-**Description:** Chuyển target của dự án `agv_esp32` sang vi điều khiển `esp32s3` trên ESP-IDF v6.0.2. Tinh chỉnh `sdkconfig.defaults` loại bỏ các cờ BT classic không hỗ trợ trên S3, kích hoạt NimBLE và ATT MTU 256.
+Tài liệu đặc tả: [`docs/specs/SPEC-crossline-exit-turn.md`](file:///d:/Workspace/Projects/AGV/docs/specs/SPEC-crossline-exit-turn.md)
+Kế hoạch tổng quan: [`tasks/plan.md`](file:///d:/Workspace/Projects/AGV/tasks/plan.md)
+
+---
+
+## Task 1: Định Nghĩa Trạng Thái FSM & Hằng Số Điều Khiển
+**Description:** Bổ sung trạng thái `LINE_STATE_CROSSING_FOR_TURN_RIGHT` vào enum `line_state_t` và định nghĩa hằng số timeout an toàn `TURN_MAX_TIMEOUT_MS = 3000ms`. Chuyển hướng khi gặp vạch ngang có lệnh rẽ phải sang trạng thái lướt qua vạch ngang.
 
 **Acceptance criteria:**
-- [x] `sdkconfig.defaults` chứa đầy đủ các cấu hình NimBLE BLE cho S3 (`CONFIG_BT_ENABLED=y`, `CONFIG_BT_BLUEDROID_ENABLED=n`, `CONFIG_BT_NIMBLE_ENABLED=y`, `CONFIG_BT_NIMBLE_ATT_PREFERRED_MTU=256`).
-- [x] `idf.py set-target esp32s3` chạy trơn tru, sinh file `sdkconfig` nhắm đúng kiến trúc Xtensa LX7 của ESP32-S3.
+- [x] `app_line_follow.h` khai báo giá trị `LINE_STATE_CROSSING_FOR_TURN_RIGHT` trong `line_state_t`.
+- [x] `app_line_follow.c` định nghĩa `#define TURN_MAX_TIMEOUT_MS 3000`.
+- [x] Nhánh phát hiện vạch ngang khi `action == AGV_ACTION_TURN_RIGHT` chuyển sang `LINE_STATE_CROSSING_FOR_TURN_RIGHT` thay vì chuyển ngay sang trạng thái quay.
 
 **Verification:**
-- [x] Lệnh: `idf.py set-target esp32s3` thực thi thành công không lỗi trong môi trường ESP-IDF v6.x.
-
-**Dependencies:** Không.
+- [x] `py -3 -m unittest discover tests` chạy không lỗi biên dịch cú pháp.
 
 **Files touched:**
-- `agv_esp32/sdkconfig.defaults`
-- `agv_esp32/sdkconfig`
-
-**Estimated scope:** Small (1-2 files).
+- `agv_stm32/Application/Inc/app_line_follow.h`
+- `agv_stm32/Application/Src/app_line_follow.c`
 
 ---
 
-## Task 2: Cập nhật Pinout UART (GPIO 42 TX, GPIO 41 RX) Trong `uart_service` & `main.c`
-**Description:** Thay thế chân UART cũ (GPIO 16/17 đã bị dính bus camera) bằng cặp chân mới đã thống nhất: GPIO 42 (TX) và GPIO 41 (RX). Sử dụng `UART_NUM_1`, kết nối nút BOOT ở `GPIO_NUM_0`.
+## Task 2: Triển Khai Logic Lướt Qua Vạch Ngang & Cạnh Xuống (Falling Edge)
+**Description:** Xây dựng khối xử lý cho `LINE_STATE_CROSSING_FOR_TURN_RIGHT` trong vòng lặp 100Hz. Xe duy trì đi thẳng với tốc độ $v_{turn}$ cho đến khi cụm cảm biến trượt khỏi vạch ngang (`is_crossline == false`), tại chu kỳ đó lập tức kích hoạt `LINE_STATE_TURNING_RIGHT`.
 
 **Acceptance criteria:**
-- [x] `main.c` định nghĩa `AGV_PIN_UART_TX = GPIO_NUM_42`, `AGV_PIN_UART_RX = GPIO_NUM_41`, `AGV_UART_PORT = UART_NUM_1`.
-- [x] `uart_service.h` cập nhật macro mặc định `UART_SERVICE_CONFIG_DEFAULT()` với TX=42, RX=41, Port=UART1.
-- [x] Nút BOOT vẫn giữ nguyên `AGV_PIN_BOOT_BTN = GPIO_NUM_0`.
+- [x] Khi ở `LINE_STATE_CROSSING_FOR_TURN_RIGHT`, xe đo cảm biến, cập nhật `is_crossline`, duy trì tốc độ 2 bánh $v_L = v_R = v_{turn}$.
+- [x] Ngay chu kỳ đầu tiên `!s_tracker.is_crossline`, xe chuyển sang `LINE_STATE_TURNING_RIGHT`, lưu `s_turn_start_tick = now`, reset tracker PID.
 
 **Verification:**
-- [x] Build thành công: `idf.py build` sinh ra file `build/agv_esp32.bin` và `build/agv_esp32.elf`.
-
-**Dependencies:** Task 1.
+- [x] Test cấu trúc và logic chuyển cạnh xuống trong `tests/test_line_follow_edge_cases.py`.
 
 **Files touched:**
-- `agv_esp32/main/main.c`
-- `agv_esp32/components/uart_service/include/uart_service.h`
-
-**Estimated scope:** Small (2 files).
+- `agv_stm32/Application/Src/app_line_follow.c`
 
 ---
 
-## Checkpoint 1: Sau Task 1 & Task 2 (Biên Dịch Sạch Sẽ Cho ESP32-S3)
-- [x] Firmware `agv_esp32` biên dịch thành công 100% cho kiến trúc `esp32s3`.
-- [x] Không có cảnh báo hoặc lỗi liên quan đến NimBLE hay UART driver.
-
----
-
-## Task 3: Cập nhật Tài Liệu Kỹ Thuật & Sơ Đồ Đấu Nối Freenove S3 CAM
-**Description:** Bổ sung bảng chân cắm phần cứng chi tiết của kit Freenove ESP32-S3 CAM vào tài liệu đặc tả `SPEC-agv-esp32-binary-gateway.md` và `README.md`, giải thích rõ các chân đã dùng và các chân được bảo lưu cho Camera/PSRAM/SD.
+## Task 3: Tích Hợp Timeout 3.0s & Hoàn Thiện Line PID 3 Mắt Phải
+**Description:** Bổ sung cơ chế bảo vệ an toàn ngắt motor sau 3.0 giây nếu không bắt được vạch mới khi đang rẽ, đồng thời hoàn thiện bộ tính sai số 3 mắt phải và Line PID ôm cua.
 
 **Acceptance criteria:**
-- [x] `docs/specs/SPEC-agv-esp32-binary-gateway.md` có bảng đấu nối chi tiết giữa STM32F103 (PA9/PA10) và Freenove ESP32-S3 CAM (GPIO 41/42).
-- [x] Ghi chú rõ ràng lý do tránh các chân GPIO 4–18 (Camera), GPIO 35–37 (PSRAM), GPIO 38–40 (SD Card).
-- [x] `README.md` cập nhật thông số gateway là Freenove ESP32-S3 CAM.
+- [x] Trong `LINE_STATE_TURNING_RIGHT`, nếu `(now - s_turn_start_tick) >= TURN_MAX_TIMEOUT_MS` (3000ms), xe lập tức dừng khẩn cấp qua `App_LineFollow_Stop()` và gửi trạng thái `AGV_MISSION_ERROR_LOST`.
+- [x] 2 mắt trái `norm[3], norm[4]` bị triệt tiêu bằng 0.
+- [x] Sai số $e_{turn}$ tính theo trọng số hình học $[1000, 385, 0]$.
+- [x] Điều khiển ôm cua bằng Line PID vi sai mượt mà.
 
 **Verification:**
-- [x] Kiểm tra nội dung markdown và liên kết tài liệu hiển thị chuẩn xác.
-
-**Dependencies:** Task 2.
+- [x] Chạy unit test kiểm tra công thức sai số và timeout.
 
 **Files touched:**
-- `docs/specs/SPEC-agv-esp32-binary-gateway.md`
-- `README.md`
-
-**Estimated scope:** Small (2 files).
+- `agv_stm32/Application/Src/app_line_follow.c`
 
 ---
 
-## Task 4: Kiểm Thử Toàn Diện Bộ Giao Thức & Client Python
-**Description:** Chạy toàn bộ bộ test tự động của phía PC Python Client (`test_ble_controller.py`) và bộ test giao thức nhị phân của STM32 để đảm bảo việc di chuyển phần cứng sang S3 không làm phá vỡ logic truyền thông và chẩn đoán.
+## Task 4: Xây Dựng Bộ Unit Test FSM & Edge Cases
+**Description:** Viết các test case kiểm tra toàn diện trạng thái FSM mới, phát hiện cạnh xuống, timeout 3000ms và bộ trọng số cảm biến trong `test_line_follow_edge_cases.py`.
 
 **Acceptance criteria:**
-- [x] 22/22 unit tests của `test_ble_controller.py` vượt qua (parse log, telemetry line, monitor_ir, calibrate_line, step recorder).
-- [x] 110/110 unit tests của STM32 vượt qua.
+- [x] Test `test_crossing_for_turn_right_state_exists` đạt PASS.
+- [x] Test `test_turn_max_timeout_defined` đạt PASS.
+- [x] Test `test_falling_edge_turn_right_logic` đạt PASS.
+- [x] Test `test_turn_right_timeout_protection` đạt PASS.
+- [x] Toàn bộ test suite `tests/` đạt 100% (120/120 tests PASS).
 
 **Verification:**
-- [x] Chạy: `py -3 -m unittest agv_esp32/tools/test_ble_controller.py` -> OK (Ran 22 tests in 0.001s).
-- [x] Chạy: `cd agv_stm32 && py -3 -m unittest discover tests` -> OK (Ran 110 tests in 1.876s).
-
-**Dependencies:** Task 2.
+- [x] `py -3 -m unittest discover tests` đạt 100% PASS.
 
 **Files touched:**
-- `agv_esp32/tools/test_ble_controller.py`
-
-**Estimated scope:** Extra Small (1 file kiểm thử).
+- `agv_stm32/tests/test_line_follow_edge_cases.py`
 
 ---
 
-## Checkpoint 2: Hoàn Tất Triển Khai & Bàn Giao
-- [x] Tất cả các bài test phần mềm (132 tests tổng cộng) vượt qua.
-- [x] Firmware binary `agv_esp32.bin` sẵn sàng nạp qua cổng Type-C "UART".
-- [x] Bảng hướng dẫn cắm dây vật lý rõ ràng cho người dùng.
-
----
-
-# Giai Đoạn 3: AGV Wireless Desktop GUI Dashboard (Python / CustomTkinter)
-
-## Task 5: Xây Dựng Module Lõi Đa Luồng & Phân Tích Telemetry (`AsyncBleWorker` + `TelemetryParser`)
-**Description:** Xây dựng module nền tảng chạy `bleak` và `asyncio` an toàn trong một daemon thread riêng biệt, giao tiếp hai chiều với GUI thread qua hàng đợi `queue.Queue`. Xây dựng parser tách dòng telemetry IR (`DATA:LINE`), bước nhảy (`DATA:<ms>`), phản hồi trạng thái và log.
+## Task 5: Biên Dịch Firmware & Nghiệm Thu Tổng Thể
+**Description:** Biên dịch file thực thi `agv_stm32.elf`, kiểm tra tài nguyên bộ nhớ Flash và RAM, sẵn sàng nạp xuống kit STM32.
 
 **Acceptance criteria:**
-- [x] `AsyncBleWorker` kết nối được với `AGV_ESP32`, tự động gửi/nhận chuỗi không làm nghẽn GUI main thread.
-- [x] `TelemetryParser` chuyển đổi chính xác dữ liệu 5 mắt IR và sai số line $e_{line}$.
-- [x] Dữ liệu step response được gom mảng tọa độ $(t, RPM)$ sạch sẽ.
+- [x] Lệnh `cmake --build build/Debug` hoàn tất thành công (0 errors, 0 warnings).
+- [x] Bộ nhớ RAM = 26.60% (5448 B / 20 KB), Flash = 81.80% (53608 B / 64 KB).
+- [x] Cập nhật walkthrough artifact và báo cáo cho người dùng.
 
 **Verification:**
-- [x] Kiểm thử unit test chạy pass 100% (Ran 8 tests in 0.000s).
-
-**Dependencies:** Task 4.
-
-**Files touched:**
-- `agv_esp32/tools/agv_ble_gui.py`
-
-**Estimated scope:** Medium (1 file).
-
----
-
-## Task 6: Xây Dựng Giao Diện Đồ Họa Desktop Dashboard (`CustomTkinter` + `Matplotlib`)
-**Description:** Xây dựng giao diện Dark Mode với `customtkinter`: Header (kết nối, RSSI, nút PING, nút Emergency Stop màu đỏ), Tab 1 Giám sát mảng 5 mắt IR với thanh bar đồ họa & điều khiển tay, Tab 2 Đồ thị Step Response nhúng Matplotlib, Tab 3 Hiệu chuẩn quang học, Tab 4 Lập trình lộ trình, và Console log bên dưới.
-
-**Acceptance criteria:**
-- [x] Giao diện mở lên mượt mà ở độ phân giải chuẩn (1180x820), các widget bo góc sắc nét.
-- [x] 5 thanh bar cảm biến IR nhảy theo dữ liệu thực tế ở tần số 20Hz.
-- [x] Đồ thị Matplotlib nhúng cập nhật đường cong đáp ứng khi chạy test động cơ.
-- [x] Nút Dừng Khẩn Cấp gửi lệnh `STOP` tức thời.
-
-**Verification:**
-- [x] `agv_esp32/tools/agv_ble_gui.py` cú pháp chuẩn xác, hỗ trợ đầy đủ 4 tab chức năng và nút Dừng khẩn cấp.
-
-**Dependencies:** Task 5.
-
-**Files touched:**
-- `agv_esp32/tools/agv_ble_gui.py`
-
-**Estimated scope:** Medium (1 file).
-
----
-
-## Task 7: Viết Bộ Test Tự Động Toàn Diện Cho GUI & Cập Nhật Tài Liệu
-**Description:** Viết bộ test `agv_esp32/tools/test_ble_gui.py` kiểm thử độc lập các logic parser, hàng đợi sự kiện và bộ lọc dữ liệu. Cập nhật `README.md` với hướng dẫn khởi chạy GUI.
-
-**Acceptance criteria:**
-- [x] Tất cả unit tests trong `test_ble_gui.py` PASS 100%.
-- [x] `README.md` có hướng dẫn chạy GUI: `py -3 agv_esp32/tools/agv_ble_gui.py`.
-
-**Verification:**
-- [x] Chạy `py -3 -m unittest agv_esp32/tools/test_ble_gui.py` -> PASS 8/8 tests.
-
-**Dependencies:** Task 6.
-
-**Files touched:**
-- `agv_esp32/tools/test_ble_gui.py`
-- `README.md`
-
-**Estimated scope:** Small (2 files).
-
----
-
-## Checkpoint 3: Hoàn Tất Triển Khai GUI Dashboard
-- [x] Toàn bộ unit test (cũ và mới) chạy PASS 100% (140/140 tests).
-- [x] Ứng dụng Desktop GUI sẵn sàng vận hành trên máy tính của người dùng (`py -3 agv_esp32/tools/agv_ble_gui.py`).
-
+- [x] `cmake --build build/Debug` trả về returncode 0.

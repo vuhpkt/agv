@@ -98,6 +98,40 @@ class TestLineFollowEdgeCases(unittest.TestCase):
         err_d = int((norm_r2 * w_outer + norm_r1 * w_inner) / total)
         self.assertEqual(err_d, (1000 + 385) // 2)
 
+    def test_crossing_for_turn_right_state_defined(self):
+        """app_line_follow.h must define LINE_STATE_CROSSING_FOR_TURN_RIGHT"""
+        with open(APP_LINE_H, "r", encoding="utf-8") as f:
+            content = f.read()
+        self.assertIn("LINE_STATE_CROSSING_FOR_TURN_RIGHT", content,
+                      "app_line_follow.h must define LINE_STATE_CROSSING_FOR_TURN_RIGHT")
+
+    def test_turn_max_timeout_defined(self):
+        """app_line_follow.c must define TURN_MAX_TIMEOUT_MS as 3000ms"""
+        with open(APP_LINE_C, "r", encoding="utf-8") as f:
+            content = f.read()
+        match = re.search(r"#define\s+TURN_MAX_TIMEOUT_MS\s+(\d+)", content)
+        self.assertIsNotNone(match, "Could not find TURN_MAX_TIMEOUT_MS definition")
+        self.assertEqual(int(match.group(1)), 3000, "TURN_MAX_TIMEOUT_MS must be 3000ms")
+
+    def test_falling_edge_turn_right_logic(self):
+        """app_line_follow.c must handle LINE_STATE_CROSSING_FOR_TURN_RIGHT and transition on !is_crossline"""
+        with open(APP_LINE_C, "r", encoding="utf-8") as f:
+            content = f.read()
+        self.assertIn("LINE_STATE_CROSSING_FOR_TURN_RIGHT", content)
+        # When in crossing for turn right, must check !s_tracker.is_crossline to trigger LINE_STATE_TURNING_RIGHT
+        pattern = r"LINE_STATE_CROSSING_FOR_TURN_RIGHT[\s\S]*?!s_tracker\.is_crossline[\s\S]*?LINE_STATE_TURNING_RIGHT"
+        self.assertIsNotNone(re.search(pattern, content),
+                             "Must transition from CROSSING_FOR_TURN_RIGHT to TURNING_RIGHT when is_crossline becomes false")
+
+    def test_turn_right_timeout_protection(self):
+        """LINE_STATE_TURNING_RIGHT must check TURN_MAX_TIMEOUT_MS and stop on timeout"""
+        with open(APP_LINE_C, "r", encoding="utf-8") as f:
+            content = f.read()
+        self.assertIn("TURN_MAX_TIMEOUT_MS", content)
+        pattern = r"LINE_STATE_TURNING_RIGHT[\s\S]*?TURN_MAX_TIMEOUT_MS[\s\S]*?App_LineFollow_Stop"
+        self.assertIsNotNone(re.search(pattern, content),
+                             "LINE_STATE_TURNING_RIGHT must trigger App_LineFollow_Stop on TURN_MAX_TIMEOUT_MS")
+
 
 if __name__ == "__main__":
     unittest.main()

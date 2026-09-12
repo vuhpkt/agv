@@ -18,6 +18,7 @@
 #define LINE_LOST_TIMEOUT_MS        2000   /**< Thời gian an toàn ngắt motor khi mất vạch liên tục (2 giây) */
 #define CROSSLINE_DEBOUNCE_MS       200    /**< Thời gian debounce sau khi qua ngã rẽ (200ms) */
 #define TURN_MIN_DURATION_MS        250    /**< Thời gian quay tối thiểu để thoát khỏi line cũ (250ms) */
+#define TURN_MAX_TIMEOUT_MS         3000   /**< Thời gian an toàn tối đa cho một khúc cua (3 giây) */
 
 static line_state_t s_state = LINE_STATE_IDLE;
 static line_tracker_t s_tracker;
@@ -176,7 +177,37 @@ void App_LineFollow_Process(void) {
         return;
     }
 
+    if (s_state == LINE_STATE_CROSSING_FOR_TURN_RIGHT) {
+        BSP_IR_GetRaw(s_last_raw);
+        line_tracker_normalize(&s_tracker, s_last_raw, s_last_norm);
+        line_tracker_compute_error(&s_tracker, s_last_norm);
+
+        float turn_speed = s_base_rpm * 0.6f;
+        if (turn_speed < 30.0f) turn_speed = 30.0f;
+
+        /* Đi thẳng ổn định với tốc độ rẽ để tiến sâu vào tâm ngã rẽ */
+        App_MotorControl_SetTargetRPM(turn_speed, turn_speed);
+
+        /* Cạnh xuống (Falling Edge): khi cụm cảm biến vừa trượt khỏi vạch ngang */
+        if (!s_tracker.is_crossline) {
+            s_state = LINE_STATE_TURNING_RIGHT;
+            s_turn_start_tick = now;
+            line_tracker_reset(&s_tracker);
+        }
+        return;
+    }
+
     if (s_state == LINE_STATE_TURNING_RIGHT) {
+        /* Kiểm tra Timeout an toàn tối đa 3.0s */
+        if ((uint32_t)(now - s_turn_start_tick) >= TURN_MAX_TIMEOUT_MS) {
+            App_LineFollow_Stop();
+            if (s_is_route_mode) {
+                s_is_route_mode = false;
+                App_Comms_SendMissionStatus(AGV_MISSION_ERROR_LOST, s_route_step);
+            }
+            return;
+        }
+
         BSP_IR_GetRaw(s_last_raw);
         line_tracker_normalize(&s_tracker, s_last_raw, s_last_norm);
 
@@ -266,8 +297,8 @@ void App_LineFollow_Process(void) {
                             return;
                         }
                     } else if (action == AGV_ACTION_TURN_RIGHT) {
-                        s_state = LINE_STATE_TURNING_RIGHT;
-                        s_turn_start_tick = now;
+                        /* Lướt qua vạch ngang trước: xe chỉ bắt đầu rẽ phải khi cảm biến rời khỏi vạch ngang (falling edge) */
+                        s_state = LINE_STATE_CROSSING_FOR_TURN_RIGHT;
                         line_tracker_reset(&s_tracker);
                         if (s_route_step >= s_route_count) {
                             s_is_route_mode = false;
