@@ -120,8 +120,24 @@ class TestAutoTuning(unittest.TestCase):
 
         self.assertIsNotNone(tune)
         self.assertAlmostEqual(tune["omega_ss"], 110.0, delta=3.0)
-        # Recommended speed should be ~ 50 RPM (110 * 0.45 = 49.5 -> rounded to 50)
-        self.assertEqual(tune["rec_speed"], 50.0)
+        # Extrapolated to 1000 PWM -> ~220 RPM max -> 35% is ~75 RPM
+        self.assertEqual(tune["rec_speed"], 75.0)
+
+    def test_auto_tune_consistency_across_pwm(self):
+        # The same motor tested at 500 PWM (~100 RPM) vs 1000 PWM (~200 RPM)
+        # Must produce consistent line speed and proportional gains
+        x_ms = [float(i * 10) for i in range(50)]
+        y_500 = [100.0 * (1.0 - math.exp(-t / 45.0)) for t in x_ms]
+        y_1000 = [200.0 * (1.0 - math.exp(-t / 45.0)) for t in x_ms]
+
+        tune_500 = compute_auto_tune_parameters(x_ms, y_500, pwm=500)
+        tune_1000 = compute_auto_tune_parameters(x_ms, y_1000, pwm=1000)
+
+        self.assertIsNotNone(tune_500)
+        self.assertIsNotNone(tune_1000)
+        self.assertEqual(tune_500["rec_speed"], tune_1000["rec_speed"])
+        self.assertAlmostEqual(tune_500["kp"], tune_1000["kp"], delta=0.5)
+        self.assertAlmostEqual(tune_500["k_ff"], tune_1000["k_ff"], delta=0.2)
 
     def test_auto_tune_insufficient_samples(self):
         self.assertIsNone(compute_auto_tune_parameters([10.0, 20.0], [5.0, 10.0], 500))

@@ -115,8 +115,10 @@ def compute_auto_tune_parameters(x_ms: List[float], y_rpm: List[float], pwm: int
     kp = max(1.5, min(12.0, 1.4 * k_ff))
     ki = max(20.0, min(350.0, kp / tau_s))
 
-    # Recommended line following speed: 45% of maximum rated steady state speed
-    raw_rec = omega_ss * 0.45
+    # Extrapolate theoretical maximum speed at 100% PWM (1000 units)
+    # This ensures consistent speed recommendation whether tested at 500 or 1000 PWM
+    rpm_max_est = gain_k * 1000.0
+    raw_rec = rpm_max_est * 0.35
     rec_speed = float(max(35.0, min(80.0, round(raw_rec / 5.0) * 5.0)))
 
     return {
