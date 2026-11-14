@@ -187,15 +187,6 @@ Các tính năng hỗ trợ: Quét & kết nối BLE, Thanh đo đồ họa 5 m�
 
 ---
 
-## 🤝 Hướng Dẫn Phối Hợp & Đóng Góp (Contributing)
-
-Xem chi tiết hướng dẫn tại [CONTRIBUTING.md](CONTRIBUTING.md) về:
-- Quy chuẩn thiết kế **4-Tier Clean Architecture** & **100% Zero-Malloc** trên STM32.
-- Quy trình chạy bộ kiểm thử tự động **156/156 bài unit test** trước khi đẩy mã nguồn.
-- Quy ước đặt tên nhánh và định dạng commit message **Conventional Commits**.
-
----
-
 ## 📄 Bản Quyền & Giấy Phép (License)
 
 Dự án được phân phối dưới giấy phép [MIT License](LICENSE).
