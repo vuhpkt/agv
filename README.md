@@ -4,7 +4,7 @@
 [![STM32](https://img.shields.io/badge/STM32-STM32F103C8T6%20%40%2072MHz-blue.svg)]()
 [![ESP32-S3](https://img.shields.io/badge/ESP32--S3-Xtensa%20LX7%20%40%20240MHz-red.svg)]()
 [![IDF](https://img.shields.io/badge/ESP--IDF-v6.x-brightgreen.svg)]()
-[![Tests](https://img.shields.io/badge/Tests-148%20passed-brightgreen.svg)]()
+[![Tests](https://img.shields.io/badge/Tests-156%20passed-brightgreen.svg)]()
 [![License](https://img.shields.io/badge/License-MIT-green.svg)]()
 
 Hệ thống robot tự hành AGV hai bánh vi sai (Two-Wheel Differential Drive Mobile Robot) chuyên dụng cho bám vạch kẻ sàn (Line Tracking) trong nhà kho thông minh và sa bàn mô phỏng công nghiệp.
@@ -121,6 +121,7 @@ AGV/
 | | [esp32_uart_protocol_guide.md](docs/esp32_uart_protocol_guide.md) | Pinout nối dây UART, CRC16-CCITT, cấu trúc từng gói tin nhị phân |
 | **Đặc Tả (Specs)** | [SPEC-agv-esp32-binary-gateway.md](docs/specs/SPEC-agv-esp32-binary-gateway.md) | Đặc tả 4 module: protocol, uart_service, ble_bridge, python client |
 | | [SPEC-line-tracking.md](docs/specs/SPEC-line-tracking.md) | Đặc tả mảng 5 mắt IR ADC DMA, Weighted Centroid, Line PID |
+| | [SPEC-crossline-exit-turn.md](docs/specs/SPEC-crossline-exit-turn.md) | Đặc tả lướt qua vạch ngang (falling edge), rẽ phải 3 mắt IR & PID |
 | | [SPEC-agv-ble-gui.md](docs/specs/SPEC-agv-ble-gui.md) | Đặc tả Dashboard giao diện đồ họa BLE & Bộ nhận dạng Auto-Tuner |
 | **Quyết Định (ADRs)** | [ADR-001: Clean Architecture](docs/decisions/ADR-001-4-tier-clean-architecture.md) | Chuẩn hóa kiến trúc 4 lớp, Zero-HAL Services, IoC Driver |
 | | [ADR-002: Zero-Bloat Diagnostics](docs/decisions/ADR-002-zero-bloat-bench-diagnostics-and-hardware-scaling.md) | Tách biệt mã test khỏi production, tối ưu Flash/RAM |
@@ -148,7 +149,7 @@ cd agv_stm32
 ./build.sh
 # Hoặc: cmake --build build/Debug
 
-# Chạy toàn bộ 110 bài kiểm thử tự động
+# Chạy toàn bộ 120 bài kiểm thử tự động
 py -3 -m unittest discover tests
 
 # Nạp firmware vào vi điều khiển qua ST-Link V2
