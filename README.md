@@ -174,8 +174,8 @@ idf.py -p COMx flash monitor
 ### 3. Công Cụ Test Không Dây BLE Trên Máy Tính
 Yêu cầu: Python 3.10+, `bleak`, `customtkinter`, `matplotlib`
 ```bash
-# Cài đặt thư viện giao diện
-pip install bleak customtkinter matplotlib
+# Cài đặt thư viện giao diện và công cụ chẩn đoán
+pip install -r requirements.txt
 
 # 1. Khởi chạy Desktop GUI Dashboard (Khuyên dùng):
 py -3 agv_esp32/tools/agv_ble_gui.py
@@ -184,3 +184,19 @@ py -3 agv_esp32/tools/agv_ble_gui.py
 py -3 agv_esp32/tools/agv_ble_controller.py
 ```
 Các tính năng hỗ trợ: Quét & kết nối BLE, Thanh đo đồ họa 5 mắt IR 20Hz, Điều khiển tay D-Pad, Đồ thị đáp ứng bước nhảy động cơ (Step Test), Hiệu chuẩn quang học (Calibrate Line), Lập trình lộ trình tự hành (Route Mission), và Dừng khẩn cấp.
+
+---
+
+## 🤝 Hướng Dẫn Phối Hợp & Đóng Góp (Contributing)
+
+Xem chi tiết hướng dẫn tại [CONTRIBUTING.md](CONTRIBUTING.md) về:
+- Quy chuẩn thiết kế **4-Tier Clean Architecture** & **100% Zero-Malloc** trên STM32.
+- Quy trình chạy bộ kiểm thử tự động **156/156 bài unit test** trước khi đẩy mã nguồn.
+- Quy ước đặt tên nhánh và định dạng commit message **Conventional Commits**.
+
+---
+
+## 📄 Bản Quyền & Giấy Phép (License)
+
+Dự án được phân phối dưới giấy phép [MIT License](LICENSE).
+
