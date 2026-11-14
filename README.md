@@ -75,6 +75,7 @@ AGV/
 │   │   ├── ADR-003-esp32-gateway-binary-protocol-and-rtt-removal.md
 │   │   ├── ADR-004-esp32s3-freenove-cam-migration-and-pinout.md
 │   │   └── ADR-005-line-tracking-dynamics-geometry-and-safety.md
+│   ├── python_tools_and_gui_guide.md # Hướng dẫn sử dụng Desktop GUI, Auto-Tuner và BLE CLI
 │   ├── agv_system_overview_for_esp32.md # Tổng quan hệ thống và thông số cơ khí
 │   ├── esp32_uart_protocol_guide.md  # Sơ đồ nối dây và cấu trúc gói tin UART
 │   ├── architecture.md               # Kiến trúc phần mềm 4 tầng trên STM32
@@ -123,6 +124,7 @@ AGV/
 |---|---|---|
 | **Tổng quan và giao tiếp** | [agv_system_overview_for_esp32.md](docs/agv_system_overview_for_esp32.md) | Tổng quan hệ thống, kích thước cơ khí, phân định vai trò hai MCU |
 | | [esp32_uart_protocol_guide.md](docs/esp32_uart_protocol_guide.md) | Sơ đồ nối dây UART, mã kiểm tra CRC16, cấu trúc gói tin nhị phân |
+| **Công cụ & Giao diện** | [python_tools_and_gui_guide.md](docs/python_tools_and_gui_guide.md) | Hướng dẫn sử dụng Desktop GUI, Auto-Tuner nhận dạng PI và BLE CLI |
 | **Đặc tả kỹ thuật** | [SPEC-agv-esp32-binary-gateway.md](docs/specs/SPEC-agv-esp32-binary-gateway.md) | Đặc tả 4 module: protocol, uart_service, ble_bridge, python client |
 | | [SPEC-line-tracking.md](docs/specs/SPEC-line-tracking.md) | Đặc tả mảng 5 cảm biến IR ADC DMA, Weighted Centroid, Line PID |
 | | [SPEC-crossline-exit-turn.md](docs/specs/SPEC-crossline-exit-turn.md) | Đặc tả lướt qua vạch ngang, rẽ phải 3 cảm biến và Line PID |
