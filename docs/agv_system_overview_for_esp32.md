@@ -4,83 +4,80 @@ Tài liệu này được biên soạn dành riêng cho kỹ sư phát triển f
 
 ---
 
-## 1. Bức Tranh Tổng Thể Dự Án (Project Vision)
+## 1. Tổng Quan Dự Án
 
-### 1.1 Chiếc Xe Tự Hành AGV Này Là Gì?
-Đây là một robot tự hành công nghiệp cỡ nhỏ dạng **dẫn động vi sai hai bánh (Two-Wheel Differential Drive)** với mảng cảm biến quang học phía trước chuyên dùng để **chạy bám vạch kẻ sàn (Line Tracking)** trong nhà kho hoặc sa bàn mô phỏng:
-- **Di chuyển**: Hai bánh chủ động độc lập điều khiển bằng động cơ DC giảm tốc kèm encoder quang học 2 kênh A/B, cùng 1 bánh xe tự hướng (caster wheel) trợ lực thăng bằng.
-- **Dò đường**: Mảng 5 mắt quang trở hồng ngoại (Analog IR Array) gắn sát mặt sàn phía trước đầu xe để liên tục đo đạc vị trí lệch so với vạch dẫn hướng.
-- **Sa bàn**: Vạch dẫn đường màu tương phản trên sàn. Tại các điểm giao nhau (ngã ba, ngã tư) hoặc điểm dừng trạm (Station A, B, C...) có vẽ **vạch ngang (Crossline / Intersection)** cắt ngang đường đi.
+### 1.1 Mục Đích Thiết Kế Của Xe AGV
+Đây là robot tự hành cỡ nhỏ dạng dẫn động vi sai hai bánh, trang bị mảng cảm biến quang học phía trước chuyên dùng để chạy bám vạch kẻ sàn trong nhà kho hoặc sa bàn mô phỏng:
+- **Di chuyển**: Hai bánh chủ động độc lập điều khiển bằng động cơ DC giảm tốc kèm encoder hai kênh A/B, cùng bánh xe tự hướng trợ lực thăng bằng.
+- **Dò đường**: Mảng cảm biến quang học hồng ngoại gắn sát mặt sàn phía trước đầu xe để liên tục đo đạc vị trí lệch so với tâm vạch dẫn hướng.
+- **Sa bàn**: Vạch dẫn đường màu tương phản trên sàn. Tại các điểm giao nhau (ngã ba, ngã tư) hoặc điểm dừng trạm có bố trí vạch ngang cắt ngang đường đi.
 
 ### 1.2 Mục Tiêu Vận Hành Hệ Thống
-1. Người vận hành sử dụng ứng dụng di động (hoặc phần mềm quản lý kho) kết nối không dây qua **Bluetooth Low Energy (BLE)** với ESP32.
-2. Người dùng phát lệnh: *"Xe hãy đi từ Trạm 1 đến Trạm 4"*.
-3. **ESP32** (Bộ não điều phối) tra cứu bản đồ sa bàn, chuyển yêu cầu thành một chuỗi bước di chuyển: *Đi thẳng qua ngã 1 -> Rẽ phải tại ngã 2 -> Đi thẳng qua ngã 3 -> Dừng tại trạm 4*.
-4. ESP32 nạp chuỗi lệnh này xuống **STM32** qua cổng UART nhị phân.
-5. **STM32** (Tầng chấp hành) tự động bám line, tự đếm vạch ngang để chuyển hướng mượt mà, và dừng hẳn khi đến đích, sau đó bắn tín hiệu báo cho ESP32.
-6. ESP32 cập nhật trạng thái lên giao diện điện thoại của người dùng.
+1. Người vận hành sử dụng ứng dụng di động hoặc phần mềm quản lý kho kết nối không dây qua Bluetooth Low Energy (BLE) với ESP32.
+2. Người dùng phát lệnh yêu cầu xe di chuyển giữa các trạm xác định trên sa bàn.
+3. ESP32 tra cứu bản đồ sa bàn, chuyển yêu cầu thành chuỗi các bước di chuyển qua từng ngã rẽ.
+4. ESP32 nạp chuỗi lệnh này xuống STM32 qua cổng UART bằng giao thức nhị phân.
+5. STM32 tự động bám vạch, nhận diện vạch ngang để chuyển hướng và dừng hẳn khi đến đích, sau đó gửi thông báo trạng thái về ESP32.
+6. ESP32 cập nhật trạng thái lên giao diện điều khiển của người dùng.
 
 ---
 
-## 2. Kiến Trúc 2 Vi Điều Khiển & Phân Chia Trách Nhiệm (Separation of Concerns)
+## 2. Kiến Trúc 2 Vi Điều Khiển Và Phân Chia Trách Nhiệm
 
-Hệ thống tuân thủ nghiêm ngặt nguyên lý phân tách trách nhiệm giữa **Tầng Điều Phối Cấp Cao (High-Level Coordinator)** và **Tầng Chấp Hành Thời Gian Thực Cứng (Hard Real-Time Controller)**:
+Hệ thống tuân thủ nguyên lý phân tách trách nhiệm giữa bộ điều phối và bộ điều khiển chấp hành thời gian thực:
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│ ỨNG DỤNG ĐIỀU KHIỂN TRÊN ĐIỆN THOẠI (Mobile App / Web UI)   │
+│                ỨNG DỤNG ĐIỀU KHIỂN & GIAO DIỆN              │
 └──────────────────────────────┬──────────────────────────────┘
                                │ Bluetooth Low Energy (BLE)
 ┌──────────────────────────────▼──────────────────────────────┐
-│ [ESP32-S3] - BỘ NÃO ĐIỀU PHỐI (Freenove ESP32-S3 CAM)        │
-│ 1. Gateway kết nối không dây BLE NUS với người dùng.        │
-│ 2. Quản lý bản đồ Topology (Đồ thị các trạm và nhánh rẽ).   │
-│ 3. Lập kế hoạch đường đi (Route Planner / FSM).             │
-│ 4. Chuyển tiếp log/chẩn đoán từ STM32 lên app người dùng.   │
-│ 5. Phát lệnh Dừng khẩn cấp (Emergency Stop) khi có sự cố.   │
-│ 6. Sẵn sàng tích hợp module Camera và thẻ nhớ SD sau này.   │
+│ [ESP32-S3] - BỘ ĐIỀU PHỐI VÀ TRUYỀN THÔNG                   │
+│ 1. Gateway kết nối không dây BLE với người dùng.             │
+│ 2. Quản lý bản đồ mạng lưới các trạm và nhánh rẽ.           │
+│ 3. Lập kế hoạch đường đi và quản lý lộ trình.               │
+│ 4. Chuyển tiếp log và dữ liệu chẩn đoán lên ứng dụng.        │
+│ 5. Phát lệnh dừng khẩn cấp khi có sự cố.                    │
+│ 6. Sẵn sàng tích hợp camera và thẻ nhớ.                     │
 └──────────────────────────────┬──────────────────────────────┘
                                │ UART1 DMA 115200 8N1 (CRC16-CCITT)
                                │ ESP32-S3 GPIO42 (TX) <-> STM32 PA10 (RX)
                                │ ESP32-S3 GPIO41 (RX) <-> STM32 PA9 (TX)
 ┌──────────────────────────────▼──────────────────────────────┐
-│ [STM32] - BỘ ĐIỀU KHIỂN CHẤP HÀNH (Hard Real-Time Slave)    │
-│ 1. Đọc ADC DMA 5 mắt cảm biến quang trở (Chu kỳ 10ms).      │
-│ 2. Thuật toán bám vạch Line PID (Chu kỳ 10ms).              │
-│ 3. Đo đạc xung Encoder & vòng lặp điều khiển vận tốc        │
-│    động cơ kín Motor PI (Chu kỳ 10ms).                      │
-│ 4. Autonomous Route Queue: Lưu chuỗi bước, tự đếm vạch      │
-│    ngang IR và tự chuyển bước (không cần hỏi lại ESP32).    │
-│ 5. Tự ngắt motor an toàn khi mất vạch liên tục (>1.0 giây). │
+│ [STM32] - BỘ ĐIỀU KHIỂN CHUYỂN ĐỘNG THỜI GIAN THỰC          │
+│ 1. Đọc ADC DMA 5 cảm biến quang học ở chu kỳ 10ms.          │
+│ 2. Thuật toán bám vạch Line PID (chu kỳ 10ms).              │
+│ 3. Đọc xung encoder và điều khiển vận tốc kín Motor PI.      │
+│ 4. Hàng đợi lộ trình: Tự nhận diện vạch ngang và chuyển     │
+│    bước, không cần chờ hỏi lại ESP32 tại từng ngã rẽ.       │
+│ 5. Tự ngắt động cơ an toàn khi mất vạch liên tục quá 2.0s.   │
 │ 6. Thực thi các bài kiểm tra phần cứng (Step Test, Diag).   │
 └─────────────────────────────────────────────────────────────┘
 ```
 
-### Tại Sao Lại Thiết Kế "Autonomous Route Queue"?
-Trong quá trình thảo luận kiến trúc, câu hỏi đặt ra là: *Khi xe đến ngã rẽ, STM32 có nên hỏi ESP32 rẽ trái hay rẽ phải không?*
-- **Câu trả lời là KHÔNG**: Nếu STM32 phải dừng lại, gửi câu hỏi qua UART, đợi ESP32 phân tích FSM rồi gửi lệnh rẽ xuống, xe sẽ bị **dừng giật cục tại mọi ngã rẽ**, trễ quán tính làm xe trôi vạch, và thời gian di chuyển giữa các trạm tăng gấp đôi.
-- **Giải pháp tối ưu**: ESP32 gửi **toàn bộ danh sách bước từ đầu** (`AGV_MSG_ROUTE_LOAD`). Trong suốt hành trình, STM32 tự động quét vạch ngang và chuyển bước độc lập. Khi đến bước cuối cùng (hoặc gặp hành động `STOP`), xe tự phanh dừng và bắn gói tin `EVENT_MISSION_STATUS(COMPLETED)` lên ESP32!
+### Thiết Kế Hàng Đợi Lộ Trình Độc Lập
+- Khi xe đến ngã rẽ, STM32 không cần dừng lại gửi tin hỏi ESP32 để tránh xe bị giật cục và trễ quán tính tại từng giao lộ.
+- ESP32 gửi toàn bộ danh sách bước ngay từ đầu qua gói tin `AGV_MSG_ROUTE_LOAD`. Trong suốt hành trình, STM32 tự động quét vạch ngang và chuyển bước độc lập. Khi hoàn thành bước cuối cùng, xe tự động phanh dừng và gửi gói tin thông báo trạng thái `EVENT_MISSION_STATUS(COMPLETED)` lên ESP32.
 
 ---
 
-## 3. Thông Số Vật Lý & Cơ Khí AGV (Physical Constants)
+## 3. Các Thông Số Cơ Khí Và Chuyển Động Cần Lưu Ý
 
-Lập trình viên ESP32 cần nắm các thông số cơ khí của xe để tính toán lộ trình và cấu hình vận tốc hợp lý:
+Lập trình viên cần lưu ý các thông số chuyển động và cơ học của xe để tính toán lộ trình và cấu hình vận tốc:
 
-| Thông Số Cơ Học / Điện | Giá Trị Thực Tế | Ý Nghĩa / Ảnh Hưởng Đến Lập Trình |
+| Thông số | Cách xác định | Ý nghĩa đối với điều khiển |
 |---|---|---|
-| **Đường kính bánh xe ($D$)** | $65.0\text{ mm}$ ($0.065\text{ m}$) | Chu vi bánh xe: $C = \pi \times D \approx 204.2\text{ mm}$ mỗi vòng. |
-| **Khoảng cách 2 bánh ($L$)** | $160.0\text{ mm}$ ($0.160\text{ m}$) | Bán kính quay đầu vi sai: $R_{turn} = L / 2 = 80\text{ mm}$. |
-| **Độ phân giải Encoder ($CPR$)** | $1320\text{ xung/vòng}$ | Đọc qua Timer 16-bit chế độ Encoder Mode 4X. |
-| **Vận tốc danh định tiêu chuẩn** | **`80.0 RPM`** | Tương đương vận tốc dài $\approx 0.27\text{ m/s}$ (rất ổn định trên sa bàn). |
-| **Dải vận tốc hỗ trợ** | `40.0` đến `120.0 RPM` | Khi rẽ ngã ba/ngã tư, STM32 tự giảm tốc xuống 60% ($\approx 48\text{ RPM}$) để đảm bảo an toàn. |
-| **Mức điều khiển PWM TB6612** | `-1000` đến `+1000` | Điều chế độ rộng xung 20kHz, tương ứng $-100.0\%$ đến $+100.0\%$ công suất. |
-| **Thời gian tự ngắt mất vạch** | `1000 ms` ($1.0\text{ giây}$) | Nếu cả 5 mắt IR mất vạch quá 1s, STM32 tự dừng khẩn cấp và báo lỗi `ERROR_LOST`. |
-| **Thời gian debounce ngã rẽ** | `400 ms` | STM32 tự bỏ qua các vạch ngang trong 400ms sau ngã rẽ để không bị quét đúp 1 vạch. |
+| **Đường kính bánh xe ($D$)** | Đo đạc thực tế trên bánh xe AGV | Dùng để quy đổi từ số vòng quay sang quãng đường di chuyển: $S = \pi \times D \times \text{vòng}$. |
+| **Khoảng cách 2 bánh ($L$)** | Đo đạc thực tế giữa 2 tâm bánh xe | Dùng để tính toán bán kính quay vòng vi sai và tốc độ góc khi rẽ. |
+| **Độ phân giải Encoder ($CPR$)** | Xác định theo thông số động cơ và chế độ đọc Timer 4X | Số xung ghi nhận trên một vòng quay của bánh xe, phục vụ tính vận tốc góc. |
+| **Vận tốc cơ sở khi bám line** | Cấu hình qua lệnh `ROUTE_LOAD` hoặc tham số mặc định | Vận tốc chạy thẳng trên sa bàn. Khi vào ngã rẽ, STM32 tự động giảm tốc để đảm bảo bám vạch an toàn. |
+| **Dải điều khiển PWM TB6612** | `-1000` đến `+1000` | Điều chế độ rộng xung 20kHz, tương ứng $-100.0\%$ đến $+100.0\%$ công suất cấp cho động cơ. |
+| **Thời gian ngắt an toàn khi mất vạch** | Cấu hình trong phần mềm (mặc định 2.0s) | Khi toàn bộ cảm biến mất vạch liên tục vượt ngưỡng này, STM32 tự dừng khẩn cấp và báo lỗi. |
+| **Thời gian bỏ qua vạch ngang sau rẽ** | Cấu hình trong phần mềm (mặc định 200ms) | Bỏ qua các vạch ngang trong thời gian ngắn sau khi vừa vượt ngã rẽ để tránh quét đúp một vạch. |
 
 ---
 
-## 4. Các Chế Độ Hoạt Động (Operating Modes)
+## 4. Các Chế Độ Hoạt Động
 
 ESP32 có thể yêu cầu STM32 chuyển đổi linh hoạt giữa 3 chế độ vận hành:
 
@@ -121,7 +118,7 @@ Dành cho người vận hành mở màn hình "Cài Đặt / Chẩn Đoán" tr�
 
 ```
 ┌────────────────────────────────────────────────────────────────────────┐
-│ FREE-RTOS TRÊN ESP32 (Dual-Core Xtensa LX6 @ 240MHz)                   │
+│ FREE-RTOS TRÊN ESP32-S3 (Xtensa LX7 @ 240MHz)                         │
 ├──────────────────────────────────┬─────────────────────────────────────┤
 │ Core 0: Task Mạng & Giao Tiếp BLE │ Core 1: Task Điều Phối & UART       │
 │                                  │                                     │
@@ -164,35 +161,34 @@ const RouteMap g_station_routes[] = {
 Khi nhận lệnh BLE chọn trạm đích, ESP32 chỉ cần tra cứu bảng này, lấy mảng `actions` tương ứng rồi gọi `agv_pack_route_load(...)` gửi xuống STM32!
 
 ### 5.2 Xử Lý Kênh Log Debug Không Dây (`AGV_MSG_LOG`)
-Trước đây xe dùng cổng ST-Link SEGGER RTT để in log. Hiện tại, thư viện RTT đã được **gỡ bỏ hoàn toàn**. Bất cứ khi nào STM32 chạy (nhịp tim Heartbeat, cảnh báo ngã rẽ, kết quả step test), nó đều gửi gói tin `AGV_MSG_LOG` (ID `0x99`) sang ESP32.
+Trước đây xe dùng cổng ST-Link SEGGER RTT để in log. Hiện tại, thư viện RTT đã được gỡ bỏ hoàn toàn. Bất cứ khi nào STM32 chạy (nhịp tim Heartbeat, cảnh báo ngã rẽ, kết quả step test), nó đều gửi gói tin `AGV_MSG_LOG` (ID `0x99`) sang ESP32.
 - **ESP32 chỉ cần**:
-  ```cpp
+  ```c
   if (frame->msg_id == AGV_MSG_LOG) {
       char log_buf[65];
       uint8_t len = (frame->length < 64) ? frame->length : 64;
       memcpy(log_buf, frame->payload, len);
       log_buf[len] = '\0';
       
-      // 1. In ra Serial Monitor của ESP32 qua cổng Type-C
-      Serial.printf("[STM32 LOG] %s\r\n", log_buf);
+      // 1. In ra console debug của ESP32 qua cổng Type-C
+      ESP_LOGI(TAG, "[STM32 LOG] %s", log_buf);
       
-      // 2. (Tùy chọn) Bắn chuỗi log này qua BLE Characteristic về điện thoại
-      pLogCharacteristic->setValue(log_buf);
-      pLogCharacteristic->notify();
+      // 2. Chuyển tiếp chuỗi log qua BLE Notify về máy tính/điện thoại
+      ble_nus_send_string(log_buf);
   }
   ```
-Nhờ đó, bạn hoàn toàn có thể theo dõi "sức khỏe" và hành vi của xe khi đang chạy thực tế trên sàn mà không cần cắm bất kỳ sợi dây cáp nào vào xe!
+Nhờ đó, người vận hành hoàn toàn có thể theo dõi hành vi của xe khi đang chạy thực tế trên sàn mà không cần cắm bất kỳ sợi dây cáp nào vào xe.
 
 ---
 
-## 6. Danh Mục Tài Liệu & File Mã Nguồn Tham Khảo
+## 6. Danh Mục Tài Liệu Tham Khảo
 
 Toàn bộ tài nguyên phục vụ lập trình ESP32 đã có sẵn trong kho mã nguồn:
 
 1. **Thư viện C giao thức dùng chung**:
    - [`Services/Inc/comms_protocol.h`](file:///d:/Workspace/Projects/AGV/agv_stm32/Services/Inc/comms_protocol.h) — Khai báo các enum, struct packed và prototype hàm.
    - [`Services/Src/comms_protocol.c`](file:///d:/Workspace/Projects/AGV/agv_stm32/Services/Src/comms_protocol.c) — Triển khai thuật toán CRC16-CCITT, máy trạng thái stream byte parser và các hàm đóng gói frame.
-2. **Cẩm nang kỹ thuật & Code mẫu ESP32**:
-   - [`docs/esp32_uart_protocol_guide.md`](esp32_uart_protocol_guide.md) — Hướng dẫn chi tiết từng byte của các gói tin và file code mẫu C++ hoàn chỉnh cho ESP32.
+2. **Cẩm nang kỹ thuật giao thức UART**:
+   - [`docs/esp32_uart_protocol_guide.md`](esp32_uart_protocol_guide.md) — Hướng dẫn chi tiết từng byte của các gói tin nhị phân.
 3. **Biên bản ghi nhận quyết định kiến trúc**:
    - [`docs/decisions/ADR-003-esp32-gateway-binary-protocol-and-rtt-removal.md`](decisions/ADR-003-esp32-gateway-binary-protocol-and-rtt-removal.md) — Ghi lại toàn bộ bối cảnh, lý do lựa chọn và hệ quả kiến trúc của mô hình 2 MCU.

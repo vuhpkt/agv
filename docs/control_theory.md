@@ -1,98 +1,103 @@
-# Lý thuyết Điều khiển & Nhận dạng Động cơ (Control Theory & Motor Identification)
+# Lý Thuyết Điều Khiển Và Nhận Dạng Động Cơ
 
-Tài liệu này giải thích cơ sở lý thuyết điều khiển tự động, mô hình toán học hàm truyền, cấu trúc bộ điều khiển vận tốc vòng kín (PI Controller) và phương pháp xác định tham số cho động cơ xe AGV.
+Tài liệu này giải thích cơ sở lý thuyết điều khiển tự động, mô hình toán học hàm truyền, cấu trúc bộ điều khiển vận tốc vòng kín và phương pháp xác định tham số cho hệ thống truyền động xe AGV.
 
 ---
 
-## 1. Nhận dạng Hệ thống & Mô hình Hàm truyền (System Identification)
+## 1. Mô Hình Toán Học Và Nhận Dạng Hệ Thống
 
-Hệ thống truyền động gồm động cơ DC có chổi than, hộp giảm tốc và tải trọng bánh xe được kích thích bằng tín hiệu đầu vào **bước nhảy đơn vị (Unit Step Response)** ở mức 80% PWM (800 / 1000). Dữ liệu tốc độ phản hồi được thu thập theo thời gian thực ở chu kỳ $T_s = 10\text{ ms}$.
-
-Qua công cụ phân tích tự động `scripts/plot_step_response.py`, động cơ được mô hình hóa theo dạng **Hệ bậc nhất có trễ (First-Order System)**:
+Hệ thống truyền động gồm động cơ DC có chổi than, hộp giảm tốc và quán tính bánh xe khi được kích thích bằng tín hiệu điện áp bước nhảy (Step Response) có thể được mô hình hóa theo dạng **hệ quán tính bậc nhất**:
 
 $$G(s) = \frac{\Omega(s)}{U(s)} = \frac{K}{\tau s + 1}$$
 
-### Các thông số nhận dạng được từ thực nghiệm:
-- **Hệ số khuếch đại tĩnh (DC Gain $K$)**: $K \approx 0.2699 \text{ RPM / PWM}$
-  - Ở 80% PWM (800 đơn vị), vận tốc xác lập đạt $\omega_{ss} \approx 216 \text{ RPM}$.
-- **Hằng số thời gian ($\tau$)**: $\tau \approx 0.0449 \text{ s}$ ($44.9\text{ ms}$)
-  - Thời gian để động cơ tăng tốc đạt 63.2% vận tốc xác lập ($136.5\text{ RPM}$).
-- **Thời gian tăng ($t_r$, 10% đến 90%)**: $t_r \approx 98.6\text{ ms}$.
-- **Thời gian xác lập ($t_s$, dải sai số 2%)**: $t_s \approx 175\text{ ms}$.
-- **Độ vọt lố (Overshoot)**: $\approx 0\%$ (hệ thống có tính chất quán tính thuần túy, quá tắt dần).
+Trong đó:
+- $\Omega(s)$: Tốc độ quay của bánh xe sau hộp giảm tốc.
+- $U(s)$: Tín hiệu điều khiển PWM cấp cho cầu H TB6612 (chuẩn hóa trong khoảng $0 \dots 1000$).
+- $K$: **Hệ số khuếch đại tĩnh** (DC Gain, đơn vị $\text{RPM / PWM}$), thể hiện tỉ số giữa vận tốc xác lập và mức PWM kích thích:
+  $$K = \frac{\Omega_{ss}}{U_{step}}$$
+- $\tau$: **Hằng số thời gian cơ học** (giây), là thời gian cần thiết để vận tốc động cơ tăng từ $0$ đạt đến $63.2\%$ vận tốc xác lập $\Omega_{ss}$.
+- $t_r$: Thời gian tăng (Rise Time), thời gian để vận tốc tăng từ $10\%$ đến $90\%$ vận tốc xác lập:
+  $$t_r \approx 2.2 \times \tau$$
+- $t_s$: Thời gian xác lập (Settling Time, theo dải sai số $2\%$):
+  $$t_s \approx 4 \times \tau$$
+
+> [!NOTE]
+> Các thông số $K$ và $\tau$ phụ thuộc trực tiếp vào động cơ thực tế, tải trọng khung xe và điện áp nguồn cấp. Chúng ta không gán trước các giá trị cố định mà sẽ đo đạc và nhận dạng trực tiếp trên xe thông qua bài kiểm tra bước nhảy (Step Test) hoặc bộ nhận dạng tự động (Auto-Tuner) trên Desktop GUI.
 
 ---
 
-## 2. Cấu trúc Bộ điều khiển Vận tốc Vòng kín (Velocity Control Pipeline)
+## 2. Cấu Trúc Bộ Điều Khiển Vận Tốc Vòng Kín
 
-Mỗi chu kỳ điều khiển ($T_s = 10\text{ ms}$ / tần số $100\text{ Hz}$), chuỗi tính toán diễn ra theo thứ tự sau trong `Services/Src/velocity_service.c` và `Services/Src/motor_pi.c`:
+Mỗi chu kỳ điều khiển ($T_s = 10\text{ ms}$, tần số $100\text{ Hz}$), chuỗi tính toán vận tốc diễn ra trong `Services/Src/velocity_service.c` và `Services/Src/motor_pi.c`:
 
 ```mermaid
 flowchart LR
-    A["Target RPM"] --> B["Slew-Rate Limiter<br/>(600 RPM/s)"]
-    B --> C["Feedforward Term<br/>(Kff * Target)"]
+    A["Target RPM"] --> B["Slew-Rate Limiter<br/>Giới hạn gia tốc"]
+    B --> C["Feedforward Term<br/>Kff * Target"]
     B --> D["Trừ sai số e = Target - Measured"]
-    D --> E["P-Term (Kp * e)"]
-    D --> F["I-Term có Anti-windup<br/>(Ki * Integral)"]
+    D --> E["P-Term<br/>Kp * e"]
+    D --> F["I-Term Anti-windup<br/>Ki * Integral"]
     C --> G["Cộng tổng điều khiển"]
     E --> G
     F --> G
-    G --> H["Bù ma sát tĩnh<br/>(Deadzone 40 PWM)"]
+    G --> H["Bù ma sát tĩnh<br/>Deadzone"]
     H --> I["Bão hòa đầu ra<br/>[-1000, 1000]"]
     I --> J["Ghi PWM TB6612"]
 
     K["Raw Encoder Ticks"] --> L["Chuyển đổi RPM"]
-    L --> M["Bộ lọc LPF EMA<br/>(alpha = 0.85)"]
+    L --> M["Bộ lọc LPF EMA<br/>alpha"]
     M --> D
 ```
 
 ---
 
-## 3. Các thành phần Thuật toán Chi tiết
+## 3. Các Thành Phần Thuật Toán Chi Tiết
 
-### 3.1. Tính toán Vận tốc thô & Lọc số thông thấp (LPF / EMA)
+### 3.1. Tính Toán Vận Tốc Và Lọc Thông Thấp EMA
 Vận tốc góc tức thời của bánh xe (vòng/phút - RPM) được tính từ số xung Encoder $\Delta \text{ticks}$ ghi nhận trong chu kỳ $\Delta t$:
 
 $$\omega_{raw} = \frac{\Delta \text{ticks}}{\text{CPR}} \times \frac{60}{\Delta t}$$
 
-Do tín hiệu đếm xung số ở chu kỳ nhỏ ($10\text{ ms}$) thường chứa nhiễu lượng tử hóa (quantization noise), vận tốc được đưa qua bộ lọc số trung bình động hàm mũ (Exponential Moving Average - EMA):
+Trong đó $\text{CPR}$ (Counts Per Revolution) là tổng số xung thu được sau hộp giảm tốc trên 1 vòng bánh xe ở chế độ đọc 4X (sẽ được cấu hình chính xác theo thông số động cơ thực tế).
+
+Tín hiệu đo xung ở chu kỳ ngắn ($10\text{ ms}$) thường chứa nhiễu lượng tử hóa. Vận tốc được làm trơn qua bộ lọc trung bình động hàm mũ (Exponential Moving Average - EMA):
 
 $$\omega_{filtered}[k] = \alpha \cdot \omega_{filtered}[k-1] + (1 - \alpha) \cdot \omega_{raw}[k]$$
 
-Trong đó hệ số lọc mặc định $\alpha = 0.85$ giúp triệt tiêu xung gai tần số cao trong khi vẫn giữ trễ pha thấp ($< 15\text{ ms}$).
+Hệ số lọc $\alpha \in [0.8, 0.9]$ giúp triệt tiêu gai xung tần số cao mà vẫn giữ độ trễ pha ở mức thấp ($< 15\text{ ms}$).
 
 ---
 
-### 3.2. Bộ giới hạn Gia tốc (Slew-Rate Limiter)
-Để chống giật cơ khí và tránh sụt áp nguồn pin khi đổi tốc độ đột ngột, tốc độ mục tiêu được làm trơn theo gia tốc tối đa:
+### 3.2. Bộ Giới Hạn Gia Tốc (Slew-Rate Limiter)
+Để chống giật cơ khí và tránh sụt áp nguồn pin khi đổi tốc độ đột ngột, tốc độ mục tiêu được làm trơn theo gia tốc dốc tối đa $a_{max}$:
 
 $$|\Delta \omega_{target}| \le a_{max} \times \Delta t$$
 
-Với $a_{max} = 600\text{ RPM/s}$, trong $10\text{ ms}$ vận tốc tăng/giảm tối đa là $6\text{ RPM}$.
-
 ---
 
-### 3.3. Điều khiển Tiến định (Feedforward Friction Compensation)
+### 3.3. Điều Khiển Tiến Định (Feedforward)
 Thành phần Feedforward dự đoán trước điện áp cần thiết dựa trên mô hình tĩnh của động cơ:
 
 $$u_{ff} = K_{ff} \times \omega_{target}$$
 
-Với $K_{ff} = \frac{1}{K} \approx 3.705\text{ PWM / RPM}$. Nhờ có Feedforward, phản ứng bám tốc độ của xe diễn ra gần như tức thời ($0\text{ ms}$ trễ do không phải chờ sai số tích lũy).
+Hệ số bù Feedforward được xác định từ hệ số khuếch đại tĩnh:
+
+$$K_{ff} = \frac{1}{K} = \frac{U_{max}}{\text{RPM}_{max}}$$
+
+Nhờ có Feedforward, bánh xe có thể đạt ngay gần đúng tốc độ mong muốn mà không phải chờ sai số tích phân tích lũy dần.
 
 ---
 
-### 3.4. Bộ điều khiển PI có chống bão hòa tích phân (Anti-windup)
+### 3.4. Bộ Điều Khiển PI Có Chống Bão Hòa Tích Phân
 - **Thành phần tỉ lệ (Proportional)**: $u_p = K_p \times e[k]$ với $e[k] = \omega_{target} - \omega_{filtered}[k]$.
-- **Thành phần tích phân (Integral)**: Triệt tiêu sai số xác lập do ma sát và tải trọng thay đổi:
+- **Thành phần tích phân (Integral)**: Triệt tiêu sai số xác lập khi xe mang tải hoặc chuyển hướng:
   
   $$I[k] = \text{clamp}\left(I[k-1] + K_i \times e[k] \times \Delta t, -I_{max}, +I_{max}\right)$$
-  
-  Với giới hạn kẹp tích phân $I_{max} = 400.0\text{ PWM}$, ngăn chặn hiện tượng vọt lố khi động cơ khởi động hoặc bị kẹt bánh.
 
 ---
 
-### 3.5. Bù Ma sát tĩnh / Vùng chết (Deadzone Compensation)
-Động cơ và hộp số luôn có lực ma sát tĩnh Coulomb. Ở các mức PWM nhỏ ($< 40$), động cơ không thể quay. Thuật toán tự động bù bước nhảy điện áp khi xe chuyển động:
+### 3.5. Bù Ma Sát Tĩnh (Deadzone Compensation)
+Động cơ và hộp số luôn có lực ma sát tĩnh Coulomb. Ở các mức PWM quá nhỏ, động cơ chưa thể thắng ma sát để quay. Thuật toán tự động cộng thêm mức bù điện áp $u_{deadzone}$ khi xe chuyển động:
 
 $$u_{out} = \begin{cases} 
 u + u_{deadzone} & \text{khi } u > 0 \\
@@ -100,101 +105,97 @@ u - u_{deadzone} & \text{khi } u < 0 \\
 0 & \text{khi } u = 0 
 \end{cases}$$
 
----
-
-### 3.6. Cơ chế Xử lý Bão hòa Công suất & Khóa Chống Tràn Tích phân (Anti-Windup Clamping)
-Khi vận tốc yêu cầu hoặc tải trọng đòi hỏi công suất vượt quá 100% duty cycle ($> 1000$ đơn vị PWM):
-1. **Bão hòa đầu ra (Output Saturation Clamping)**: Ngõ ra bị kẹp cứng tại $u_{out} \in [-1000, 1000]$.
-2. **Khóa chống tràn tích phân (Anti-Windup Clamping)**: Nếu ngõ ra đã chạm ngưỡng bão hòa ($|u_{out}| \ge 1000$) mà sai số vận tốc vẫn cùng dấu ($e > 0$ khi tăng tốc hoặc $e < 0$ khi giảm tốc), khâu tích phân **ngừng cộng dồn tích lũy** (`ctrl->integral += 0`).
-   - **Tác dụng**: Triệt tiêu hoàn toàn độ trễ xả tích phân (*Windup Lag*). Khi xe cần phanh hoặc giảm tốc, phản hồi diễn ra tức thì trong 1 chu kỳ $10\text{ ms}$ mà không bị kẹt ở tốc độ cao.
+Thông số $u_{deadzone}$ được xác định bằng thực nghiệm bằng cách tăng dần PWM từ 0 đến khi bánh xe bắt đầu quay.
 
 ---
 
-### 3.7. Ánh xạ Chuẩn hóa Tỷ lệ PWM Tầng BSP (Duty Cycle Hardware Scaling)
-- **Tầng Thuật toán & Ứng dụng**: Sử dụng dải số chuẩn hóa $u \in [0, 1000]$ (`BSP_MOTOR_MAX_SPEED = 1000`), trong đó $400$ tương ứng với $40\%$ công suất.
-- **Tầng Phần cứng Timer (TIM4)**: Được CubeMX cấu hình ở chu kỳ đếm $\text{Period} = 3599$ ($\text{ARR} = 3600$ counts) để đạt tần số băm xung siêu âm $20\text{ kHz}$ tại xung nhịp $72\text{ MHz}$.
-- **Công thức ánh xạ tại `BSP/Src/bsp_motor.c`**:
-  
-  $$\text{CCR} = \frac{\text{duty} \times \text{TIM4\_PERIOD}}{\text{BSP\_MOTOR\_MAX\_SPEED}} = \frac{\text{duty} \times 3599}{1000}$$
-  
-  *Lưu ý kỹ thuật*: Nếu ghi trực tiếp `duty = 400` vào thanh ghi `CCR` mà không ánh xạ, chu kỳ nhiệm vụ thực tế chỉ là $400 / 3600 = 11.11\%$, khiến điện áp động cơ bị sụt xuống chỉ còn $4.9\text{V} \times 11.11\% \approx 0.54\text{V}$. Nhờ có ánh xạ tỷ lệ, `CCR = 1439`, chu kỳ nhiệm vụ đạt đúng $40\%$, điện áp ra đạt chuẩn $4.9\text{V} \times 40\% = 1.96\text{V}$.
+### 3.6. Xử Lý Bão Hòa Công Suất Và Khóa Chống Tràn Tích Phân (Anti-Windup Clamping)
+Khi vận tốc yêu cầu hoặc tải trọng đòi hỏi công suất vượt quá giới hạn:
+1. **Bão hòa đầu ra**: Ngõ ra bị kẹp cứng trong dải $[-1000, 1000]$.
+2. **Khóa chống tràn tích phân (Anti-Windup Clamping)**: Nếu ngõ ra đã chạm ngưỡng bão hòa mà sai số vận tốc vẫn cùng dấu, khâu tích phân ngừng tích lũy (`ctrl->integral += 0`).
+   - Nhờ đó, khi xe cần phanh hoặc giảm tốc, phản hồi diễn ra tức thì mà không bị kẹt trễ do lượng tích phân dư thừa.
 
 ---
 
-## 4. Mối Quan Hệ Giữa Điện Áp Nguồn $V_m$ và Vận Tốc Cực Đại $\text{RPM}_{\text{max}}$
+### 3.7. Ánh Xạ Chuẩn Hóa Chu Kỳ Nhiệm Vụ PWM
+- Tầng điều khiển sử dụng dải chuẩn hóa $u \in [0, 1000]$.
+- Tầng phần cứng Timer (TIM4) cấu hình ở chu kỳ đếm $\text{ARR} = 3600$ counts để đạt tần số băm xung $20\text{ kHz}$ tại xung nhịp $72\text{ MHz}$.
+- Công thức ánh xạ:
+  $$\text{CCR} = \frac{\text{duty} \times \text{ARR}}{\text{BSP\_MOTOR\_MAX\_SPEED}} = \frac{\text{duty} \times 3599}{1000}$$
 
-Khi thay đổi điện áp nguồn cấp động cơ $V_m$ (ví dụ: chuyển từ cổng USB 5V sang pin LiPo 2S 7.4V hoặc 3S 11.1V):
-1. **Đặc tuyến vận tốc không tải cực đại**: Vận tốc cực đại $\text{RPM}_{\text{max}}$ tỉ lệ thuận với điện áp cấp $V_m$.
-2. **Cách đo thực tế**: Chạy lệnh kích xung $100\%$ trong $2.5\text{ s}$ qua RTT:
-   ```text
-   MOT A 1000 2500
-   ```
-   Dòng log `[STEP_TEST]` trả về trường `Steady: <val> RPM` chính là $\text{RPM}_{\text{max}}$ thực tế ở điện áp đó.
+---
+
+## 4. Ảnh Hưởng Của Điện Áp Nguồn Và Dự Phòng Công Suất Đánh Lái
+
+1. **Vận tốc cực đại $\text{RPM}_{max}$ tỉ lệ với điện áp nguồn cấp $V_m$**:
+   Khi thay đổi nguồn cấp (ví dụ chuyển từ 5V sang pin LiPo 2S 7.4V), tốc độ tối đa không tải sẽ thay đổi theo.
+2. **Xác định $\text{RPM}_{max}$ thực tế**:
+   Chạy thử nghiệm kích xung 100% PWM qua lệnh chẩn đoán `STEP_TEST` để đo tốc độ xác lập $\text{RPM}_{max}$ ở mức nguồn thực tế.
 3. **Cập nhật hệ số mô hình**:
-   - Độ lợi tĩnh mới: $K = \frac{\text{RPM}_{\text{max}}}{1000}$
-   - Hệ số Feedforward mới: $K_{ff} = \frac{1}{K} = \frac{1000}{\text{RPM}_{\text{max}}}$
-4. **Vùng dự phòng công suất đánh lái (Headroom)**:
-   Để đảm bảo khi bẻ cua gấp, bánh ngoài cua có đủ công suất tăng tốc mà không bị chạm trần $100\%$ duty, khuyến nghị đặt tốc độ cơ sở:
-   
-   $$v_{base} \approx 50\% \sim 65\% \text{ của } \text{RPM}_{\text{max}}$$
+   $$K = \frac{\text{RPM}_{max}}{1000}, \quad K_{ff} = \frac{1000}{\text{RPM}_{max}}$$
+4. **Dự phòng công suất đánh lái (Headroom)**:
+   Để đảm bảo khi bẻ cua gấp, bánh phía ngoài có đủ công suất tăng tốc mà không bị chạm trần 100% PWM, vận tốc cơ sở khi chạy bám line nên đặt trong khoảng:
+   $$v_{base} \approx 50\% \sim 65\% \text{ của } \text{RPM}_{max}$$
 
 ---
 
-## 5. Bảng Thông số Mặc định & Hướng dẫn Căn chỉnh (Tuning Guide)
+## 5. Danh Mục Tham Số Điều Khiển Và Hướng Dẫn Căn Chỉnh
 
-| Tham số | Giá trị mặc định | Đơn vị | File cấu hình | Ý nghĩa & Hướng dẫn căn chỉnh |
-| :--- | :---: | :---: | :--- | :--- |
-| **`CPR`** | `1320` | Xung/Vòng | `bsp_encoder.c` | Số xung 4X trên 1 vòng quay bánh xe. |
-| **`alpha`** | `0.85` | - | `motor_pi.h` | Hệ số lọc LPF. Tăng nếu tín hiệu vận tốc rung lắc, giảm nếu phản hồi bị trễ. |
-| **`kp` (Motor PI)** | `5.04` | PWM/RPM | `motor_pi.h` | Hệ số tỉ lệ động cơ. Tăng để xe bám tốc độ cứng hơn; giảm nếu thấy bánh rung giật. |
-| **`ki` (Motor PI)** | `112.3` | PWM/(RPM·s) | `motor_pi.h` | Hệ số tích phân động cơ. Triệt tiêu sai số xác lập khi xe leo dốc hoặc chở nặng. |
-| **`k_ff`** | `3.705` | PWM/RPM | `motor_pi.h` | Hệ số bù tiến định ($1/K$). Đặt bằng $1000 / \text{RPM}_{\text{max}}$. |
-| **`deadzone`** | `40.0` | PWM | `motor_pi.h` | Bù ma sát khởi động (4% PWM). |
-| **`max_accel`**| `600.0` | RPM/s | `motor_pi.h` | Gia tốc dốc tối đa. Giúp xe tăng/giảm tốc êm ái, không sụt áp pin. |
-| **`base_rpm`** | `80.0` | RPM | `app_config.h` | Tốc độ cơ sở khi tự hành bám line. |
-| **`kp` (Line PID)**| `0.15` | RPM/Error | `app_line_follow.c` | Hệ số tỉ lệ bẻ lái bám vạch. |
-| **`ki` (Line PID)**| `0.0` | RPM/(Error·s) | `app_line_follow.c` | **Triệt tiêu hoàn toàn** để loại bỏ hiện tượng lắc lư hình sin (hunting). |
-| **`kd` (Line PID)**| `0.035` | RPM·s/Error | `app_line_follow.c` | Hệ số vi sai giảm chấn (damping), dập tắt dao động khi đổi góc cua. |
-| **`out_max` (Line PID)** | `max(60.0, base)` | RPM | `app_line_follow.c` | Giới hạn vi sai bẻ lái, cho phép bánh trong phanh về 0 RPM khi ôm cua gắt. |
-| **`LINE_LOST_TIMEOUT_MS`** | `2000` | ms | `app_line_follow.c` | Thời gian tự ngắt khẩn cấp khi mất vạch liên tục (2.0 giây). |
+| Tham số | Vai trò | Cách xác định trên phần cứng thực tế |
+| :--- | :--- | :--- |
+| **`CPR`** | Độ phân giải Encoder | Số xung đọc được trên 1 vòng bánh xe sau hộp giảm tốc (chế độ đọc Timer 4X). Cần kiểm tra theo mã động cơ thực tế. |
+| **`alpha`** | Hệ số lọc số EMA vận tốc | Đặt trong khoảng $0.80 \dots 0.90$. Tăng nếu tín hiệu vận tốc đo bị rung nhiễu; giảm nếu phản hồi bị trễ. |
+| **`k_ff`** | Hệ số bù tiến định | Tính theo công thức $K_{ff} = 1000 / \text{RPM}_{max}$ sau khi đo bước nhảy $100\%$ PWM. |
+| **`kp` (Motor PI)** | Hệ số tỉ lệ điều khiển vận tốc | Tự động tính toán từ Auto-Tuner hoặc căn chỉnh tăng dần trên bàn test đến khi bánh bám tốc nhanh và êm. |
+| **`ki` (Motor PI)** | Hệ số tích phân triệt tiêu sai số | Tự động tính toán từ Auto-Tuner hoặc căn chỉnh để triệt tiêu sai số xác lập khi xe có tải. |
+| **`deadzone`** | Bù ma sát khởi động | Xác định bằng cách tăng dần PWM từ 0 đến khi bánh xe bắt đầu chuyển động. |
+| **`max_accel`** | Giới hạn gia tốc dốc | Giúp xe tăng/giảm tốc êm ái, tránh trượt bánh khi khởi hành và không gây sụt áp pin. |
+| **`base_rpm`** | Tốc độ cơ sở khi bám line | Chọn trong khoảng $50\% \dots 65\%$ của $\text{RPM}_{max}$. |
+| **`kp` (Line PID)** | Hệ số tỉ lệ bẻ lái bám vạch | Căn chỉnh trực tiếp trên sa bàn để xe bám theo tâm đường line. |
+| **`ki` (Line PID)** | Hệ số tích phân bám vạch | **Luôn đặt bằng 0** để triệt tiêu hoàn toàn hiện tượng rung lắc hình sin quanh vạch (hunting). |
+| **`kd` (Line PID)** | Hệ số vi sai giảm chấn | Dập tắt dao động và ổn định thân xe khi chuyển hướng hoặc vào cua. |
+| **`out_max` (Line PID)** | Giới hạn vi sai bẻ lái | Cấu hình theo cơ chế thích ứng $\max(60.0, v_{base})$ để bánh trong có thể phanh khi gặp cua gắt. |
+| **`LINE_LOST_TIMEOUT_MS`** | Thời gian ngắt an toàn | Ngắt động cơ khẩn cấp khi mất vạch liên tục (mặc định 2.0 giây). |
 
 ---
 
-## 6. Động Học Bám Line & Tự Động Nhận Dạng (Step Response Auto-Tuning)
+## 6. Động Học Bám Line Và Nhận Dạng Tự Động
 
-### 6.1. Động học Bẻ cua Vi sai & Bán kính Quay vòng Tối thiểu
-Với khoảng cách giữa hai tâm bánh xe (track width) $W \approx 130\text{ mm}$, quan hệ giữa vận tốc hai bánh và bán kính quay vòng $R$ tại tâm trục xe là:
+### 6.1. Động Học Bẻ Cua Vi Sai Và Bán Kính Quay Vòng
+Gọi $W$ là khoảng cách giữa hai tâm bánh xe (track width, đo đạc thực tế trên khung xe). Mối quan hệ giữa vận tốc hai bánh và bán kính quay vòng $R$ tại tâm trục xe là:
 
 $$R = \frac{W}{2} \cdot \frac{v_{ngoài} + v_{trong}}{v_{ngoài} - v_{trong}} = \frac{W}{2} \cdot \frac{2 v_{base}}{2 \Delta v} = \frac{W}{2} \cdot \frac{v_{base}}{\Delta v}$$
 
-- **Trường hợp $\Delta v < v_{base}$ (Thiếu lái / Understeer)**:
-  Nếu giới hạn vi sai $\Delta v$ bị kẹp ở mức thấp (ví dụ $\text{out\_max} = 40\text{ RPM}$ khi $v_{base} = 90\text{ RPM}$):
-  $$v_{trong} = 90 - 40 = 50\text{ RPM} \implies R_{min} = \frac{130}{2} \cdot \frac{180}{80} \approx 146.25\text{ mm}$$
-  Xe không thể bẻ đủ góc cho các khúc cua vuông $90^\circ$ có bán kính nhỏ ($R \le 100\text{ mm}$) và sẽ bị văng khỏi vạch.
-- **Trường hợp $\Delta v = v_{base}$ (Quay quanh bánh trong / Pivot Turn)**:
-  Nhờ cơ chế co giãn thích ứng $\text{out\_max} = \max(60.0f, v_{base})$, tại $v_{base} = 90\text{ RPM} \implies \text{out\_max} = 90\text{ RPM}$:
-  $$v_{trong} = 90 - 90 = 0\text{ RPM} \implies R_{min} = \frac{W}{2} \approx 65\text{ mm}$$
-  Bánh trong dừng hẳn làm điểm tựa, xe quay quanh tâm bánh trong và ôm trọn góc cua gắt.
+- **Trường hợp $\Delta v < v_{base}$ (Thiếu lái)**:
+  Nếu giới hạn vi sai $\Delta v$ bị kẹp ở mức quá nhỏ so với vận tốc cơ sở $v_{base}$, bán kính quay vòng tối thiểu sẽ lớn:
+  $$R_{min} = \frac{W}{2} \cdot \frac{v_{base}}{\Delta v_{max}} > \frac{W}{2}$$
+  Khi gặp khúc cua có bán kính nhỏ hơn $R_{min}$, xe không thể bo hết góc cua và sẽ bị văng khỏi vạch dẫn hướng.
+- **Trường hợp $\Delta v = v_{base}$ (Quay quanh bánh trong)**:
+  Khi cơ chế vi sai cho phép $\text{out\_max} \ge v_{base}$, bánh phía trong khúc cua được phanh về $0\text{ RPM}$ ($v_{trong} = 0$):
+  $$R_{min} = \frac{W}{2}$$
+  Xe sẽ xoay quanh điểm tựa là bánh trong và ôm trọn góc cua gắt.
 
-### 6.2. Tại sao Khâu Tích phân $K_i$ Bằng 0 Trong Điều Khiển Line PID?
-Trong bài toán bám line xe hai bánh vi sai, biến điều khiển là sai số vị trí tâm vạch $e_{line} \in [-1000, +1000]$ với Setpoint luôn là $0$.
-- Nếu có $K_i > 0$, trong quá trình xe điều chỉnh từ mép vạch về tâm vạch, tích phân sai số tích lũy một lượng $\int e\, dt \ne 0$.
+---
+
+### 6.2. Lý Do Khâu Tích Phân $K_i$ Bằng 0 Trong Line PID
+Trong bài toán bám line xe hai bánh vi sai, biến điều khiển là sai số vị trí tâm vạch $e_{line} \in [-1000, +1000]$ với điểm đặt Setpoint luôn là $0$.
+- Nếu sử dụng $K_i > 0$, trong quá trình xe điều chỉnh từ mép vạch về tâm vạch, tích phân sai số tích lũy một lượng $\int e\, dt \ne 0$.
 - Khi tâm xe vừa chạm vào vạch ($e = 0$), lượng bù tích phân này vẫn còn duy trì điện áp bẻ lái, ép xe tiếp tục vượt quá tâm sang phía đối diện.
-- Hiện tượng này lặp đi lặp lại tạo thành **chu kỳ dao động con lắc (hunting oscillation)** quanh vạch với biên độ nhỏ.
-- **Giải pháp chuẩn xác**: Đặt $K_i = 0.0f$, tăng $K_p = 0.15f$ và dùng khâu vi sai $K_d = 0.035f$ để làm tắt dần quán tính.
+- Hiện tượng này lặp đi lặp lại tạo thành **chu kỳ dao động con lắc (hunting)** quanh vạch.
+- **Giải pháp**: Đặt $K_i = 0.0$, sử dụng $K_p$ kết hợp khâu vi sai $K_d$ để dập tắt quán tính dao động.
 
-### 6.3. Thuật toán Step Response Auto-Tuner Trên BLE GUI Dashboard
-Công cụ [`agv_esp32/tools/agv_ble_gui.py`](../agv_esp32/tools/agv_ble_gui.py) tích hợp thuật toán nhận dạng đáp ứng bước nhảy tự động:
-1. Kích xung PWM $U_{step}$ và thu thập dữ liệu vận tốc phản hồi $\Omega(t)$.
-2. Xác định vận tốc xác lập $\Omega_{ss}$, tính hệ số khuếch đại tĩnh quy đổi về 100% công suất:
-   $$K = \frac{\Omega_{ss}}{U_{step}}, \quad \text{RPM}_{\max} = K \times 1000$$
-3. Tìm thời điểm $t_{63.2\%}$ để xác định hằng số thời gian $\tau$.
-4. Tự động tính toán bộ thông số tối ưu:
-   - Feedforward Gain: $K_{ff} = \frac{1000}{\text{RPM}_{\max}}$
-   - Proportional Gain: $K_p = \frac{\tau}{K \cdot \tau_{cl}}$ (với thời gian đáp ứng vòng kín mục tiêu $\tau_{cl} = 30\text{ ms}$)
-   - Integral Gain: $K_i = \frac{K_p}{\tau}$
-5. Đề xuất vận tốc bám line an toàn (Safe Line Speed):
-   $$v_{safe} = (60\% \sim 70\%) \times \text{RPM}_{\max}$$
-   Đảm bảo luôn có từ 30% đến 40% dự phòng công suất (Headroom) cho bánh ngoài cua khi cần tăng tốc bẻ góc.
+---
 
-
+### 6.3. Thuật Toán Nhận Dạng Tự Động (Step Response Auto-Tuner)
+Công cụ Desktop GUI tích hợp thuật toán nhận dạng đáp ứng bước nhảy tự động:
+1. Kích xung PWM $U_{step}$ và thu thập chuỗi dữ liệu vận tốc phản hồi $\Omega(t)$.
+2. Xác định vận tốc xác lập $\Omega_{ss}$, tính hệ số khuếch đại tĩnh quy đổi về $100\%$ công suất:
+   $$K = \frac{\Omega_{ss}}{U_{step}}, \quad \text{RPM}_{max} = K \times 1000$$
+3. Tìm thời điểm $t_{63.2\%}$ để xác định hằng số thời gian quán tính $\tau$.
+4. Tự động tính toán bộ thông số điều khiển:
+   - Hệ số bù Feedforward: $K_{ff} = \frac{1000}{\text{RPM}_{max}}$
+   - Hệ số tỉ lệ: $K_p = \frac{\tau}{K \cdot \tau_{cl}}$ (với thời gian đáp ứng vòng kín mục tiêu $\tau_{cl}$)
+   - Hệ số tích phân: $K_i = \frac{K_p}{\tau}$
+5. Đề xuất vận tốc bám line an toàn:
+   $$v_{safe} = (50\% \sim 65\%) \times \text{RPM}_{max}$$
+   Đảm bảo luôn có đủ dự phòng công suất cho bánh ngoài khúc cua tăng tốc khi cần bẻ lái gấp.

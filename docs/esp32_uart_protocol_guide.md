@@ -1,12 +1,12 @@
 # Hướng Dẫn Phát Triển Firmware ESP32: Giao Tiếp UART Nhị Phân Với STM32 AGV
 
-Tài liệu này cung cấp toàn bộ đặc tả kỹ thuật, sơ đồ phần cứng, bảng mã lệnh nhị phân và mã nguồn mẫu (C/C++) để bạn phát triển firmware cho **ESP32** đóng vai trò là **BLE Gateway & Bộ điều phối cấp cao** giao tiếp với **STM32F103C8T6**.
+Tài liệu này cung cấp toàn bộ đặc tả kỹ thuật, sơ đồ phần cứng và bảng mã lệnh nhị phân phục vụ phát triển firmware giao tiếp UART giữa ESP32 và STM32F103C8T6.
 
 ---
 
-## 1. Kết Nối Phần Cứng (Hardware Wiring)
+## 1. Kết Nối Phần Cứng
 
-### 1.1 Sơ Đồ Chân Nối (Pinout)
+### 1.1 Sơ Đồ Chân Nối
 | Tín Hiệu | Chân STM32F103 | Chân Freenove ESP32-S3 CAM | Ghi Chú Kỹ Thuật |
 |---|---|---|---|
 | **TX ➔ RX** | `PA9` (USART1_TX) | `GPIO 41` (UART1_RX) | STM32 truyền telemetry & log sang ESP32-S3 |
@@ -28,7 +28,7 @@ Tài liệu này cung cấp toàn bộ đặc tả kỹ thuật, sơ đồ phầ
 
 ---
 
-## 2. Đặc Tả Khung Truyền Nhị Phân (Binary Frame Format)
+## 2. Đặc Tả Khung Truyền Nhị Phân
 
 Giao thức được thiết kế theo dạng nhị phân nhỏ gọn (Binary Packet), có Header đồng bộ 2 byte và mã kiểm tra lỗi CRC16-CCITT đảm bảo không bị nhận nhầm do nhiễu động cơ:
 
@@ -46,8 +46,8 @@ Giao thức được thiết kế theo dạng nhị phân nhỏ gọn (Binary Pa
 5. **CRC16** (2 bytes: High Byte trước, Low Byte sau): CRC16-CCITT tính trên toàn bộ từ `MSG_ID` + `LENGTH` + `PAYLOAD`.
 
 ### Thuật Toán CRC16-CCITT (C Code)
-- **Đa thức (Polynomial)**: `0x1021` ($x^{16} + x^{12} + x^5 + 1$)
-- **Giá trị khởi tạo (Init)**: `0xFFFF`
+- **Đa thức**: `0x1021` ($x^{16} + x^{12} + x^5 + 1$)
+- **Giá trị khởi tạo**: `0xFFFF`
 ```c
 uint16_t agv_crc16_ccitt(const uint8_t *data, size_t len, uint16_t init_val) {
     uint16_t crc = init_val;
@@ -67,11 +67,11 @@ uint16_t agv_crc16_ccitt(const uint8_t *data, size_t len, uint16_t init_val) {
 
 ---
 
-## 3. Từ Điển Thông Điệp (Message Catalog)
+## 3. Danh Mục Thông Điệp
 
 Tất cả các số nguyên nhiều byte (`int16_t`, `uint16_t`, `int32_t`, `uint32_t`) đều theo định dạng **Little-Endian** (byte thấp đứng trước).
 
-### 3.1 Nhóm Điều Khiển Lộ Trình (Route / Autonomous Mission)
+### 3.1 Nhóm Điều Khiển Lộ Trình
 
 #### 1. `AGV_MSG_ROUTE_LOAD` (`0x10`) — ESP32 -> STM32
 Nạp chuỗi các bước hành vi qua ngã rẽ vào hàng đợi của STM32.
@@ -113,7 +113,7 @@ STM32 tự động phát sự kiện này khi trạng thái lộ trình thay đ�
 
 ---
 
-### 3.2 Nhóm Chẩn Đoán & Kiểm Thử Phần Cứng (Diagnostics)
+### 3.2 Nhóm Chẩn Đoán Và Kiểm Thử Phần Cứng
 
 Dùng để ESP32 gửi lệnh kiểm tra từng bộ phận trên xe trực tiếp trên sa bàn thông qua ứng dụng BLE trên điện thoại:
 
@@ -130,7 +130,7 @@ Dùng để ESP32 gửi lệnh kiểm tra từng bộ phận trên xe trực ti�
 
 ---
 
-### 3.3 Nhóm Hệ Thống & Gỡ Lỗi (System & Logs)
+### 3.3 Nhóm Hệ Thống Và Gỡ Lỗi
 
 #### 1. `AGV_MSG_PING` (`0x01`) & `AGV_MSG_PONG` (`0x81`)
 Kiểm tra kết nối UART còn sống giữa 2 MCU.
@@ -152,21 +152,21 @@ typedef struct __attribute__((packed)) {
 #### 4. `AGV_MSG_LOG` (`0x99`) — STM32 -> ESP32
 Chuỗi log debug do STM32 gửi sang ESP32 (thay thế cho SEGGER RTT cũ).
 - **Payload**: Chuỗi ký tự ASCII (tối đa 64 byte).
-- **ESP32 xử lý**: Đọc nội dung payload và in ra `Serial.println()` hoặc đẩy qua BLE Notify về điện thoại.
+- **ESP32 xử lý**: Đọc nội dung payload và chuyển tiếp qua BLE Notify hoặc in ra console.
 
 ---
 
-## 4. Biểu Đồ Trình Tự Thực Thi Lộ Trình (Sequence Diagram)
+## 4. Trình Tự Thực Thi Lộ Trình
 
 ```mermaid
 sequenceDiagram
     autonumber
-    actor User as Điện thoại (BLE)
-    participant ESP as ESP32 (Gateway & FSM)
+    actor User as Máy tính / Điện thoại (BLE)
+    participant ESP as ESP32-S3 (Gateway)
     participant STM as STM32 (Motion Controller)
 
-    User->>ESP: BLE: Đi từ Trạm A đến Trạm B
-    Note over ESP: FSM phân tích lộ trình:<br/>1. Đi thẳng (FORWARD)<br/>2. Rẽ phải (TURN_RIGHT)<br/>3. Đi thẳng đến trạm B (FORWARD)<br/>4. Dừng tại trạm (STOP)
+    User->>ESP: BLE: Nạp lộ trình di chuyển
+    Note over ESP: Phân tích lộ trình thành mảng các bước:<br/>1. Đi thẳng (FORWARD)<br/>2. Rẽ phải (TURN_RIGHT)<br/>3. Đi thẳng (FORWARD)<br/>4. Dừng tại trạm (STOP)
     
     ESP->>STM: UART: CMD_ROUTE_LOAD ([FORWARD, RIGHT, FORWARD, STOP], RPM=80.0)
     STM-->>ESP: UART: RESP_ACK (ROUTE_LOAD, OK)
@@ -176,187 +176,22 @@ sequenceDiagram
     STM-->>ESP: UART: EVENT_MISSION_STATUS (RUNNING, step=0)
     ESP-->>User: BLE: "Xe bắt đầu di chuyển..."
 
-    Note over STM: STM32 tự bám line.<br/>Quét thấy vạch ngang 1 -> Chạy thẳng qua -> step=1<br/>Quét thấy vạch ngang 2 -> Quay phải 90 độ -> step=2<br/>Quét thấy vạch ngang 3 -> Chạy thẳng qua -> step=3<br/>Quét thấy vạch ngang 4 -> STOP! Phanh dừng xe.
+    Note over STM: STM32 tự bám vạch.<br/>Quét thấy vạch ngang 1 -> Chạy thẳng qua -> step=1<br/>Quét thấy vạch ngang 2 -> Rẽ phải 90 độ -> step=2<br/>Quét thấy vạch ngang 3 -> Chạy thẳng qua -> step=3<br/>Quét thấy vạch ngang 4 -> Phanh dừng xe.
 
     STM-->>ESP: UART: EVENT_MISSION_STATUS (COMPLETED, step=4)
-    ESP-->>User: BLE: "Đã đến Trạm B thành công!"
+    ESP-->>User: BLE: "Đã hoàn thành lộ trình!"
 ```
 
 ---
 
-## 5. Tích Hợp Thư Viện C Dùng Chung Vào Project ESP32
+## 5. Tích Hợp Thư Viện Giao Thức Vào ESP32
 
-Mã nguồn giao thức trong thư mục `Services/Inc/comms_protocol.h` và `Services/Src/comms_protocol.c` là **C thuần (Zero-HAL, không malloc)**. Bạn có thể copy trực tiếp 2 file này vào project ESP32 (dùng cho cả **ESP-IDF** hoặc **Arduino ESP32**):
+Mã nguồn giao thức trong thư mục `Services/Inc/comms_protocol.h` và `Services/Src/comms_protocol.c` được viết bằng C thuần (độc lập phần cứng, không dùng `malloc`). Có thể tái sử dụng trực tiếp trong component `comms_protocol` của ESP-IDF:
 
 ```
-my_esp32_project/
+agv_esp32/components/comms_protocol/
 ├── include/
-│   └── comms_protocol.h     <-- Copy từ STM32 repo
-├── src/
-│   ├── comms_protocol.c     <-- Copy từ STM32 repo
-│   └── main.cpp
+│   └── comms_protocol.h
+└── comms_protocol.c
 ```
 
----
-
-## 6. Mã Nguồn Mẫu Cho ESP32 (Arduino Framework)
-
-Dưới đây là mã nguồn C++ hoàn chỉnh chạy trên ESP32 sử dụng Arduino IDE / PlatformIO:
-
-```cpp
-#include <Arduino.h>
-#include "comms_protocol.h"
-
-// Cấu hình chân UART2 trên ESP32
-#define UART_STM32_RX_PIN  16
-#define UART_STM32_TX_PIN  17
-#define STM32_SERIAL       Serial2
-
-static agv_parser_t s_parser;
-
-// Hàm gửi gói tin nhị phân từ ESP32 sang STM32
-void send_frame_to_stm32(uint8_t msg_id, const void *payload, uint8_t len) {
-    uint8_t tx_buf[AGV_PROTOCOL_MAX_FRAME_SIZE];
-    size_t total = agv_pack_frame(msg_id, payload, len, tx_buf, sizeof(tx_buf));
-    if (total > 0) {
-        STM32_SERIAL.write(tx_buf, total);
-    }
-}
-
-// Lệnh: Gửi chuỗi lộ trình [Đi thẳng -> Rẽ phải -> Đi thẳng -> Dừng]
-void send_sample_route() {
-    uint8_t actions[] = {
-        AGV_ACTION_FORWARD,
-        AGV_ACTION_TURN_RIGHT,
-        AGV_ACTION_FORWARD,
-        AGV_ACTION_STOP
-    };
-    uint8_t tx_buf[AGV_PROTOCOL_MAX_FRAME_SIZE];
-    size_t len = agv_pack_route_load(80.0f, actions, sizeof(actions), tx_buf, sizeof(tx_buf));
-    STM32_SERIAL.write(tx_buf, len);
-    Serial.println("[ESP32] Da gui lenh LOAD_ROUTE xuong STM32");
-}
-
-// Lệnh: Bắt đầu chạy lộ trình
-void start_route() {
-    uint8_t tx_buf[AGV_PROTOCOL_MAX_FRAME_SIZE];
-    size_t len = agv_pack_route_start(tx_buf, sizeof(tx_buf));
-    STM32_SERIAL.write(tx_buf, len);
-    Serial.println("[ESP32] Da gui lenh ROUTE_START");
-}
-
-// Lệnh: Dừng khẩn cấp
-void emergency_stop() {
-    uint8_t tx_buf[AGV_PROTOCOL_MAX_FRAME_SIZE];
-    size_t len = agv_pack_emergency_stop(tx_buf, sizeof(tx_buf));
-    STM32_SERIAL.write(tx_buf, len);
-    Serial.println("[ESP32] !!! DA GUI LENH EMERGENCY STOP !!!");
-}
-
-// Xử lý gói tin nhận được từ STM32
-void handle_stm32_frame(const agv_frame_t *frame) {
-    switch (frame->msg_id) {
-        case AGV_MSG_PONG:
-            Serial.println("[STM32 -> ESP32] PONG (Ket noi tot)");
-            break;
-
-        case AGV_MSG_ACK: {
-            const agv_payload_ack_t *ack = (const agv_payload_ack_t*)frame->payload;
-            Serial.printf("[STM32 -> ESP32] ACK for Msg 0x%02X, Status: %d\r\n", ack->acked_msg_id, ack->status_code);
-            break;
-        }
-
-        case AGV_MSG_MISSION_STATUS: {
-            const agv_payload_mission_status_t *st = (const agv_payload_mission_status_t*)frame->payload;
-            const char *states[] = {"IDLE", "RUNNING", "COMPLETED", "ERROR_LOST", "ERROR_TIMEOUT"};
-            Serial.printf("[STM32 -> ESP32] MISSION_STATUS: %s (Step: %d)\r\n", 
-                          (st->state <= 4) ? states[st->state] : "UNKNOWN", st->current_step_idx);
-            
-            if (st->state == AGV_MISSION_COMPLETED) {
-                Serial.println("[ESP32] >>> XE DA HOAN THANH LO TRINH VA DEN DICH! <<<");
-                // Gửi thông báo BLE về điện thoại tại đây
-            } else if (st->state == AGV_MISSION_ERROR_LOST) {
-                Serial.println("[ESP32] >>> CANH BAO: XE MAT LINE DUNG AN TOAN! <<<");
-            }
-            break;
-        }
-
-        case AGV_MSG_LOG: {
-            char log_str[65];
-            uint8_t len = (frame->length < 64) ? frame->length : 64;
-            memcpy(log_str, frame->payload, len);
-            log_str[len] = '\0';
-            Serial.printf("[STM32 LOG] %s\r\n", log_str);
-            break;
-        }
-
-        case AGV_MSG_DIAG_ENC_DATA: {
-            const agv_payload_diag_enc_data_t *enc = (const agv_payload_diag_enc_data_t*)frame->payload;
-            Serial.printf("[STM32 ENCODER] Left: %ld | Right: %ld\r\n", (long)enc->enc_left, (long)enc->enc_right);
-            break;
-        }
-
-        default:
-            Serial.printf("[STM32 -> ESP32] Received MsgID: 0x%02X, Len: %d\r\n", frame->msg_id, frame->length);
-            break;
-    }
-}
-
-void setup() {
-    Serial.begin(115200);
-    delay(500);
-    Serial.println("\r\n========================================");
-    Serial.println("  ESP32 AGV BLE Gateway Initialized");
-    Serial.println("========================================");
-
-    // Khởi tạo UART2 nối với STM32
-    STM32_SERIAL.begin(115200, SERIAL_8N1, UART_STM32_RX_PIN, UART_STM32_TX_PIN);
-    agv_parser_init(&s_parser);
-
-    delay(1000);
-
-    // Ping thử STM32
-    uint8_t ping_buf[16];
-    size_t ping_len = agv_pack_ping(ping_buf, sizeof(ping_buf));
-    STM32_SERIAL.write(ping_buf, ping_len);
-}
-
-void loop() {
-    // 1. Đọc dòng byte từ STM32 và phân tích cú pháp
-    while (STM32_SERIAL.available()) {
-        uint8_t byte = STM32_SERIAL.read();
-        agv_frame_t frame;
-        agv_parse_status_t status = agv_parser_feed_byte(&s_parser, byte, &frame);
-
-        if (status == AGV_PARSE_OK) {
-            handle_stm32_frame(&frame);
-        } else if (status == AGV_PARSE_ERR_CRC) {
-            Serial.println("[ESP32 ERROR] Gói tin từ STM32 bị sai mã CRC16!");
-        }
-    }
-
-    // 2. Nhận phím điều khiển từ Serial Monitor để kiểm thử:
-    // 'r': Nạp và chạy lộ trình mẫu
-    // 's': Dừng khẩn cấp
-    // 'e': Đọc encoder
-    // 'p': Ping
-    if (Serial.available()) {
-        char ch = Serial.read();
-        if (ch == 'r') {
-            send_sample_route();
-            delay(50);
-            start_route();
-        } else if (ch == 's') {
-            emergency_stop();
-        } else if (ch == 'e') {
-            uint8_t buf[16];
-            size_t len = agv_pack_diag_get_enc(buf, sizeof(buf));
-            STM32_SERIAL.write(buf, len);
-        } else if (ch == 'p') {
-            uint8_t buf[16];
-            size_t len = agv_pack_ping(buf, sizeof(buf));
-            STM32_SERIAL.write(buf, len);
-        }
-    }
-}
-```

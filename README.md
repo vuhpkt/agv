@@ -10,8 +10,8 @@
 Hệ thống xe tự hành AGV hai bánh vi sai bám vạch kẻ sàn trong nhà kho thông minh và sa bàn mô phỏng công nghiệp.
 
 Dự án sử dụng kiến trúc phân tầng 2 vi điều khiển:
-- **ESP32-S3 (Freenove ESP32-S3 WROOM CAM)**: Đảm nhận kết nối không dây BLE, cầu nối lệnh UART, điều phối lộ trình và chuyển tiếp dữ liệu đo xa lên máy tính.
-- **STM32F103C8T6**: Bộ điều khiển chấp hành thời gian thực, đọc mảng 5 cảm biến quang học IR qua ADC DMA, tính toán tâm vạch, điều khiển vận tốc hai bánh bằng bộ điều khiển PI và theo dõi vạch bằng PID.
+- **ESP32-S3 (Freenove ESP32-S3 WROOM CAM)**: Đảm nhận kết nối không dây BLE, cầu nối lệnh UART, điều phối lộ trình và chuyển tiếp dữ liệu lên máy tính, kết nối Camera.
+- **STM32F103C8T6**: Bộ điều khiển chấp hành thời gian thực, đọc mảng cảm biến quang học IR qua ADC DMA, tính toán tâm vạch, điều khiển vận tốc hai bánh bằng bộ điều khiển PI và theo dõi vạch bằng PID.
 
 Hai vi điều khiển giao tiếp qua UART ở tốc độ 115200 bps bằng giao thức nhị phân có mã kiểm tra CRC16-CCITT.
 
@@ -34,7 +34,7 @@ Hai vi điều khiển giao tiếp qua UART ở tốc độ 115200 bps bằng gi
 │ - Cổng nạp và debug: Cổng USB Type-C "UART" onboard         │
 │ - Dịch lệnh văn bản BLE sang gói tin nhị phân               │
 │ - Thu thập và chuyển tiếp log từ STM32 lên máy tính         │
-│ - Bảo lưu chân phần cứng cho Camera OV2640 và thẻ nhớ       │
+│ - Có phần cứng cho Camera OV2640 và thẻ nhớ       │
 └──────────────────────────────┬──────────────────────────────┘
                                │ UART1 <-> USART1 (115200 8N1 DMA Circular)
                                │ Khung truyền nhị phân có CRC16-CCITT
@@ -43,10 +43,10 @@ Hai vi điều khiển giao tiếp qua UART ở tốc độ 115200 bps bằng gi
 ┌──────────────────────────────▼──────────────────────────────┐
 │ [STM32] - ĐIỀU KHIỂN CHUYỂN ĐỘNG THỜI GIAN THỰC             │
 │ - Vi điều khiển: STM32F103C8T6 (ARM Cortex-M3 @ 72MHz)      │
-│ - Kiến trúc 4 tầng Clean Architecture, cấp phát tĩnh 100%   │
+│ - Kiến trúc 4 tầng Clean Architecture                       │
 │ - Đọc ADC1 DMA 5 cảm biến IR (chu kỳ 10ms - 100Hz)          │
 │ - Thuật toán tính trọng số tâm vạch và Line PID             │
-│ - Đọc encoder phần cứng 4X (TIM2, TIM3, CPR 1320)           │
+│ - Đọc encoder phần cứng 4X (TIM2, TIM3)                     │
 │ - Vòng kín vận tốc Motor PI 100Hz kết hợp bù ma sát         │
 │   feedforward và chống tràn tích phân anti-windup clamping  │
 │ - Hàng đợi lộ trình tự hành: Tự nhận diện vạch ngang và     │
@@ -139,55 +139,6 @@ AGV/
 | | [motor_encoder_direction_guide.md](docs/motor_encoder_direction_guide.md) | Xác định và kiểm tra chiều quay bánh xe, chiều đếm xung encoder |
 | | [diagnostics_and_bench_testing.md](docs/diagnostics_and_bench_testing.md) | Chạy thử nghiệm chẩn đoán động cơ và mảng cảm biến IR |
 | | [troubleshooting_and_faq.md](docs/troubleshooting_and_faq.md) | Hướng dẫn chẩn đoán lỗi nạp, rung lắc line và xử lý sự cố |
-
----
-
-## Hướng Dẫn Biên Dịch Và Chạy Thử
-
-### 1. Firmware STM32 (`agv_stm32`)
-Yêu cầu: `arm-none-eabi-gcc`, `cmake`, `ninja`, `python 3.10+`
-```bash
-cd agv_stm32
-
-# Biên dịch firmware
-./build.sh
-# Hoặc: cmake --build build/Debug
-
-# Chạy toàn bộ 120 bài kiểm thử tự động
-py -3 -m unittest discover tests
-
-# Nạp firmware vào vi điều khiển qua ST-Link V2
-./flash.sh
-```
-
-### 2. Firmware ESP32-S3 Gateway (`agv_esp32`)
-Yêu cầu: ESP-IDF v6.x (khuyên dùng v6.0.2)
-```bash
-cd agv_esp32
-
-# Cấu hình target sang ESP32-S3 (chỉ cần chạy lần đầu)
-idf.py set-target esp32s3
-
-# Biên dịch firmware
-idf.py build
-
-# Nạp firmware vào Freenove ESP32-S3 CAM qua cổng Type-C "UART" và mở log monitor
-idf.py -p COMx flash monitor
-```
-
-### 3. Công Cụ Điều Khiển Và Chẩn Đoán Trên Máy Tính
-Yêu cầu: Python 3.10+
-```bash
-# Cài đặt thư viện phụ thuộc
-pip install -r requirements.txt
-
-# Khởi chạy giao diện đồ họa Desktop GUI (khuyên dùng):
-py -3 agv_esp32/tools/agv_ble_gui.py
-
-# Hoặc sử dụng công cụ dòng lệnh CLI:
-py -3 agv_esp32/tools/agv_ble_controller.py
-```
-Các tính năng hỗ trợ: Quét và kết nối BLE, đồ thị thanh đo 5 cảm biến IR theo thời gian thực, điều khiển phím D-Pad, đo đáp ứng bước nhảy động cơ, hiệu chuẩn ngưỡng quang học, lập trình lộ trình tự hành và nút dừng khẩn cấp.
 
 ---
 

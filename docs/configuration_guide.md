@@ -15,7 +15,7 @@ Tài liệu này tập hợp và hướng dẫn chi tiết vị trí các macro,
 | **Đảo chiều Động cơ Phần mềm** | `cfg_left.inverted = true` | [`BSP/Src/bsp_motor.c`](file:///d:/Workspace/Projects/AGV/agv_stm32/BSP/Src/bsp_motor.c#L69) | Đảo chiều quay động cơ không cần hàn lại dây |
 | **Đảo chiều Encoder Phần mềm** | `cfg_left.inverted = true` | [`BSP/Src/bsp_encoder.c`](file:///d:/Workspace/Projects/AGV/agv_stm32/BSP/Src/bsp_encoder.c#L36) | Đảo dấu đếm xung encoder |
 | **Đảo chiều Encoder Phần cứng** | `sConfig.IC1Polarity` | [`Core/Src/tim.c`](file:///d:/Workspace/Projects/AGV/agv_stm32/Core/Src/tim.c#L52) | Đảo dấu đếm qua phần cứng Timer 0% CPU |
-| **Độ phân giải Encoder (CPR)** | `MOTOR_ENCODER_CPR` (1320) | [`Application/Src/app_motor_control.c`](file:///d:/Workspace/Projects/AGV/agv_stm32/Application/Src/app_motor_control.c#L22) | Số xung 4X trên 1 vòng bánh xe |
+| **Độ phân giải Encoder (CPR)** | `MOTOR_ENCODER_CPR` | [`Application/Src/app_motor_control.c`](file:///d:/Workspace/Projects/AGV/agv_stm32/Application/Src/app_motor_control.c#L22) | Số xung 4X trên 1 vòng bánh xe (cần nhập theo động cơ thực tế) |
 | **Hệ số PI Motor & Feedforward**| `kp`, `ki`, `k_ff`, `deadzone` | [`Services/Inc/motor_pi.h`](file:///d:/Workspace/Projects/AGV/agv_stm32/Services/Inc/motor_pi.h#L18) | Căn chỉnh bám vận tốc bánh xe |
 | **Hệ số Line PID & Đánh lái** | `kp`, `ki`, `kd`, `out_max` | [`Application/Src/app_line_follow.c`](file:///d:/Workspace/Projects/AGV/agv_stm32/Application/Src/app_line_follow.c#L25) | Căn chỉnh độ nhạy bẻ cua bám vạch |
 | **Trọng số Vị trí Mắt IR** | `weights` | [`Services/Src/line_tracker.c`](file:///d:/Workspace/Projects/AGV/agv_stm32/Services/Src/line_tracker.c#L82) | Trọng số sai số theo khoảng cách thực tế (1.25cm & 3.25cm): `[+1000, +385, 0, -385, -1000]` |
@@ -97,14 +97,14 @@ tb6612_cfg_t cfg_right = {
 
 Hệ thống điều khiển vận tốc 2 bánh xe vi sai hoạt động ở tần số $100\text{ Hz}$ ($10\text{ ms}$). Các thông số được định nghĩa tại [`Services/Inc/motor_pi.h`](file:///d:/Workspace/Projects/AGV/agv_stm32/Services/Inc/motor_pi.h) và [`Application/Src/app_motor_control.c`](file:///d:/Workspace/Projects/AGV/agv_stm32/Application/Src/app_motor_control.c):
 
-| Tham số | Giá trị mặc định | Đơn vị | Ý nghĩa kỹ thuật |
+| Tham số | Giá trị khởi tạo / Cách đo | Đơn vị | Ý nghĩa kỹ thuật |
 | :--- | :---: | :---: | :--- |
-| **`CPR`** | `1320` | Xung/vòng | Số xung thu được sau hộp giảm tốc khi bánh quay 1 vòng (chế độ 4X). |
+| **`CPR`** | Cần đo theo động cơ thực tế | Xung/vòng | Số xung thu được sau hộp giảm tốc khi bánh quay 1 vòng (chế độ 4X). |
 | **`alpha`** | `0.85` | - | Hệ số lọc thông thấp số EMA cho vận tốc: $v_{filt} = \alpha v_{filt} + (1-\alpha) v_{raw}$. |
-| **`kp`** | `5.04` | PWM/RPM | Hệ số khuếch đại tỉ lệ PI. Tăng để bám tốc độ nhanh; giảm nếu bánh xe gắt/rung. |
-| **`ki`** | `112.3` | PWM/(RPM·s) | Hệ số tích phân. Triệt tiêu sai số xác lập khi xe tải nặng hoặc lên dốc. |
-| **`k_ff`** | `3.705` | PWM/RPM | Hệ số bù tiến định ($1/K$). Đặt chính xác theo công thức $K_{ff} = 1000 / \text{RPM}_{\text{max}}$. |
-| **`deadzone`**| `40.0` | PWM | Bù ma sát khởi động tĩnh (4% công suất). |
+| **`kp`** | Căn chỉnh qua Auto-Tuner / Test | PWM/RPM | Hệ số khuếch đại tỉ lệ PI. Tăng để bám tốc độ nhanh; giảm nếu bánh xe gắt/rung. |
+| **`ki`** | Căn chỉnh qua Auto-Tuner / Test | PWM/(RPM·s) | Hệ số tích phân. Triệt tiêu sai số xác lập khi xe tải nặng hoặc lên dốc. |
+| **`k_ff`** | $1000 / \text{RPM}_{\text{max}}$ | PWM/RPM | Hệ số bù tiến định ($1/K$). Đặt theo công thức $K_{ff} = 1000 / \text{RPM}_{\text{max}}$. |
+| **`deadzone`**| Đo thực nghiệm khi bánh vừa quay | PWM | Bù ma sát khởi động tĩnh Coulomb. |
 | **`max_accel`**| `600.0` | RPM/s | Giới hạn gia tốc dốc để tránh trượt bánh khi xuất phát hoặc sụt áp pin. |
 
 #### Công thức tính $K_{ff}$ khi thay đổi điện áp nguồn $V_m$:
