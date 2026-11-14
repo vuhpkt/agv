@@ -42,3 +42,7 @@ desktop.ini
 # Git backups
 .git_backups/
 *.git_bak
+
+# Auto-generated calibration header at root
+/app_line_calib_defaults.h
+
